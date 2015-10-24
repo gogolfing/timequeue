@@ -20,4 +20,4 @@ script:
 
 after_success:
   - gocov convert *.cov > profile.cov.json
-  - goveralls -gocovdata profile.cov.json -repotoken $COVERALLS_TOKEN -service travis-org
+  - goveralls -gocovdata profile.cov.json -repotoken $COVERALLS_TOKEN -service travis-ci
