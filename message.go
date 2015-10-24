@@ -1,10 +1,17 @@
 package timequeue
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Message struct {
 	time.Time
-	Data []byte
+	Data interface{}
+}
+
+func (m *Message) String() string {
+	return fmt.Sprintf("%#v", m)
 }
 
 type messageHeap []*Message

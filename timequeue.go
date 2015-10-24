@@ -2,7 +2,6 @@ package timequeue
 
 import (
 	"container/heap"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -12,14 +11,15 @@ const (
 )
 
 type TimeQueue struct {
-	*sync.RWMutex
-	messageHeap
-	running  bool
-	stop     chan struct{}
-	nextTime time.Time
-	nextDone chan struct{}
+	messageLock *sync.RWMutex
+	messageHeap messageHeap
+
+	stateLock  *sync.RWMutex
+	running    bool
+	wakeSignal *wakeSignal
 
 	messageChan chan *Message
+	stopChan    chan struct{}
 	wakeChan    chan struct{}
 }
 
@@ -29,38 +29,65 @@ func New() *TimeQueue {
 
 func NewSize(size int) *TimeQueue {
 	q := &TimeQueue{
-		RWMutex:     &sync.RWMutex{},
+		messageLock: &sync.RWMutex{},
 		messageHeap: messageHeap([]*Message{}),
+		stateLock:   &sync.RWMutex{},
 		running:     false,
-		stop:        nil,
+		wakeSignal:  nil,
 		messageChan: make(chan *Message, size),
+		stopChan:    make(chan struct{}),
 		wakeChan:    make(chan struct{}),
 	}
 	heap.Init(&q.messageHeap)
 	return q
 }
 
-func (q *TimeQueue) Push(time time.Time, data []byte) {
-	q.PushMessage(&Message{
+func (q *TimeQueue) Push(time time.Time, data interface{}) *Message {
+	message := &Message{
 		Time: time,
 		Data: data,
-	})
+	}
+	q.PushMessage(message)
+	return message
 }
 
 func (q *TimeQueue) PushMessage(message *Message) {
-	q.enqueue(message)
+	if message == nil {
+		return
+	}
+	spawnNew := q.shouldSpanWakeSignal(message)
+	heap.Push(&q.messageHeap, message)
+	if spawnNew {
+		q.spawnNextWakeSignal()
+	}
 }
 
-func (q *TimeQueue) Peek() (time.Time, []byte) {
+func (q *TimeQueue) shouldSpanWakeSignal(message *Message) bool {
+	old := q.PeekMessage()
+	if old == nil {
+		return true
+	}
+	if message.Time.Sub(old.Time) < 0 {
+		return true
+	}
+	return false
+}
+
+func (q *TimeQueue) Peek() (time.Time, interface{}) {
 	message := q.PeekMessage()
+	if message == nil {
+		return time.Time{}, nil
+	}
 	return message.Time, message.Data
 }
 
 func (q *TimeQueue) PeekMessage() *Message {
-	q.RLock()
-	defer q.RUnlock()
-	message := q.messageHeap[0]
-	return message
+	q.messageLock.RLock()
+	defer q.messageLock.RUnlock()
+	if len(q.messageHeap) > 0 {
+		return q.messageHeap[0]
+	}
+	return nil
 }
 
 func (q *TimeQueue) Messages() <-chan *Message {
@@ -68,83 +95,117 @@ func (q *TimeQueue) Messages() <-chan *Message {
 }
 
 func (q *TimeQueue) Start() {
-	q.Lock()
-	defer q.Unlock()
-	if q.running {
+	if q.IsRunning() {
 		return
 	}
-	q.stop = make(chan struct{})
-	q.running = true
+	q.setRunning(true)
 	go q.run()
+	q.spawnNextWakeSignal()
 }
 
-func (q *TimeQueue) Stop() {
-	q.Lock()
-	defer q.Unlock()
-	if !q.running || q.stop == nil {
-		return
-	}
-	q.running = false
-	go func() {
-		q.stop <- struct{}{}
-	}()
-	<-q.stop
-}
-
-func (q *TimeQueue) wake() {
-	go func() {
-		q.wakeChan <- struct{}{}
-	}()
+func (q *TimeQueue) IsRunning() bool {
+	q.stateLock.RLock()
+	defer q.stateLock.RUnlock()
+	return q.running
 }
 
 func (q *TimeQueue) run() {
 	for {
 		select {
 		case <-q.wakeChan:
-			q.dequeue()
-		case <-q.stop:
-			q.stop <- struct{}{}
+			q.releaseSingleMessage()
+			q.spawnNextWakeSignal()
+		case <-q.stopChan:
 			break
 		}
 	}
 }
 
-func (q *TimeQueue) enqueue(message *Message) {
-	q.Lock()
-	defer q.Unlock()
-	if len(q.messageHeap) > 0 {
-		nextTime := q.messageHeap[0].Time
-		if message.Time.Sub(nextTime) < 0 {
-			q.nextDone <- struct{}{}
-			<-q.nextDone
-		}
-	}
-	heap.Push(&q.messageHeap, message)
-	nextTime := q.messageHeap[0]
-	nextTimeChan := time.After(nextTime.Sub(time.Now()))
-	go sendSignal(q.wakeChan, nextTimeChan, q.nextDone)
-}
-
-func (q *TimeQueue) dequeue() {
-	q.Lock()
-	defer q.Unlock()
+func (q *TimeQueue) releaseSingleMessage() {
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
 	if len(q.messageHeap) == 0 {
 		return
 	}
 	message := heap.Pop(&q.messageHeap).(*Message)
-	fmt.Println(message)
-	go q.deploy(message)
+	go func() {
+		q.messageChan <- message
+	}()
+	q.setWakeSignal(nil)
 }
 
-func (q *TimeQueue) deploy(message *Message) {
-	q.messageChan <- message
-}
-
-func sendSignal(dst chan struct{}, src <-chan time.Time, done chan struct{}) {
-	select {
-	case <-src:
-		dst <- struct{}{}
-	case <-done:
-		done <- struct{}{}
+func (q *TimeQueue) spawnNextWakeSignal() {
+	q.killWakeSignal()
+	message := q.PeekMessage()
+	if message == nil {
+		return
 	}
+	q.setAndSpawnWakeSignal(message.Time)
+}
+
+func (q *TimeQueue) killWakeSignal() {
+	q.stateLock.RLock()
+	defer q.stateLock.RUnlock()
+	if q.wakeSignal != nil {
+		q.wakeSignal.kill()
+	}
+}
+
+func (q *TimeQueue) setAndSpawnWakeSignal(wakeTime time.Time) {
+	q.setWakeSignal(newWakeSignal(q.wakeChan, wakeTime))
+	q.stateLock.RLock()
+	defer q.stateLock.RUnlock()
+	q.wakeSignal.spawn()
+}
+
+func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
+	q.wakeSignal = wakeSignal
+}
+
+func (q *TimeQueue) Stop() {
+	if !q.IsRunning() {
+		return
+	}
+	q.killWakeSignal()
+	q.setRunning(false)
+	go func() {
+		q.stopChan <- struct{}{}
+	}()
+}
+
+func (q *TimeQueue) setRunning(running bool) {
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
+	q.running = running
+}
+
+type wakeSignal struct {
+	dst  chan struct{}
+	src  <-chan time.Time
+	stop chan struct{}
+}
+
+func newWakeSignal(dst chan struct{}, wakeTime time.Time) *wakeSignal {
+	return &wakeSignal{
+		dst:  dst,
+		src:  time.After(wakeTime.Sub(time.Now())),
+		stop: make(chan struct{}),
+	}
+}
+
+func (w *wakeSignal) spawn() {
+	go func() {
+		select {
+		case <-w.src:
+			w.dst <- struct{}{}
+		case <-w.stop:
+		}
+		w.src = nil
+	}()
+}
+
+func (w *wakeSignal) kill() {
+	close(w.stop)
 }
