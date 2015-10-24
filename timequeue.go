@@ -151,12 +151,13 @@ func (q *TimeQueue) IsRunning() bool {
 }
 
 func (q *TimeQueue) run() {
+runLoop:
 	for {
 		select {
 		case <-q.wakeChan:
 			q.onWake()
 		case <-q.stopChan:
-			break
+			break runLoop
 		}
 	}
 }
