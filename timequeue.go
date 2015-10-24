@@ -55,22 +55,8 @@ func (q *TimeQueue) PushMessage(message *Message) {
 	if message == nil {
 		return
 	}
-	spawnNew := q.shouldSpanWakeSignal(message)
 	heap.Push(&q.messageHeap, message)
-	if spawnNew {
-		q.createAndSpawnWakeSignal()
-	}
-}
-
-func (q *TimeQueue) shouldSpanWakeSignal(message *Message) bool {
-	old := q.PeekMessage()
-	if old == nil {
-		return true
-	}
-	if message.Time.Sub(old.Time) < 0 {
-		return true
-	}
-	return false
+	defer q.afterHeapUpdate()
 }
 
 func (q *TimeQueue) Peek() (time.Time, interface{}) {
@@ -90,12 +76,63 @@ func (q *TimeQueue) PeekMessage() *Message {
 	return nil
 }
 
-func (q *TimeQueue) Pop() *Message {
-	return nil
+func (q *TimeQueue) Pop(release bool) *Message {
+	defer q.afterHeapUpdate()
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
+	if len(q.messageHeap) == 0 {
+		return nil
+	}
+	message := heap.Pop(&q.messageHeap).(*Message)
+	if release {
+		q.release(message)
+	}
+	return message
+}
+
+func (q *TimeQueue) PopAll(release bool) []*Message {
+	defer q.afterHeapUpdate()
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
+	result := make([]*Message, 0, q.messageHeap.Len())
+	for q.messageHeap.Len() > 0 {
+		message := heap.Pop(&q.messageHeap).(*Message)
+		result = append(result, message)
+	}
+	q.release(result...)
+	return result
+}
+
+func (q *TimeQueue) PopUntil(until time.Time) []*Message {
+	defer q.afterHeapUpdate()
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
+	result := make([]*Message, 0, q.messageHeap.Len())
+	for q.messageHeap.Len() > 0 {
+		message := heap.Pop(&q.messageHeap).(*Message)
+		if message.Time.Sub(until) >= 0 {
+			break
+		}
+		result = append(result, message)
+	}
+	q.release(result...)
+	return result
+}
+
+func (q *TimeQueue) afterHeapUpdate() {
+	if q.IsRunning() {
+		q.updateAndSpawnWakeSignal()
+	}
 }
 
 func (q *TimeQueue) Messages() <-chan *Message {
 	return q.messageChan
+}
+
+func (q *TimeQueue) Size() int {
+	q.messageLock.RLock()
+	defer q.messageLock.RUnlock()
+	return q.messageHeap.Len()
 }
 
 func (q *TimeQueue) Start() {
@@ -104,7 +141,7 @@ func (q *TimeQueue) Start() {
 	}
 	q.setRunning(true)
 	go q.run()
-	q.createAndSpawnWakeSignal()
+	q.updateAndSpawnWakeSignal()
 }
 
 func (q *TimeQueue) IsRunning() bool {
@@ -127,7 +164,7 @@ func (q *TimeQueue) run() {
 func (q *TimeQueue) onWake() {
 	q.releaseSingleMessage()
 	q.setWakeSignal(nil)
-	q.createAndSpawnWakeSignal()
+	q.updateAndSpawnWakeSignal()
 }
 
 func (q *TimeQueue) releaseSingleMessage() {
@@ -137,12 +174,18 @@ func (q *TimeQueue) releaseSingleMessage() {
 		return
 	}
 	message := heap.Pop(&q.messageHeap).(*Message)
+	q.release(message)
+}
+
+func (q *TimeQueue) release(messages ...*Message) {
 	go func() {
-		q.messageChan <- message
+		for _, message := range messages {
+			q.messageChan <- message
+		}
 	}()
 }
 
-func (q *TimeQueue) createAndSpawnWakeSignal() {
+func (q *TimeQueue) updateAndSpawnWakeSignal() {
 	q.killWakeSignal()
 	message := q.PeekMessage()
 	if message == nil {
