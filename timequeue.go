@@ -58,7 +58,7 @@ func (q *TimeQueue) PushMessage(message *Message) {
 	spawnNew := q.shouldSpanWakeSignal(message)
 	heap.Push(&q.messageHeap, message)
 	if spawnNew {
-		q.spawnNextWakeSignal()
+		q.createAndSpawnWakeSignal()
 	}
 }
 
@@ -90,6 +90,10 @@ func (q *TimeQueue) PeekMessage() *Message {
 	return nil
 }
 
+func (q *TimeQueue) Pop() *Message {
+	return nil
+}
+
 func (q *TimeQueue) Messages() <-chan *Message {
 	return q.messageChan
 }
@@ -100,7 +104,7 @@ func (q *TimeQueue) Start() {
 	}
 	q.setRunning(true)
 	go q.run()
-	q.spawnNextWakeSignal()
+	q.createAndSpawnWakeSignal()
 }
 
 func (q *TimeQueue) IsRunning() bool {
@@ -113,12 +117,17 @@ func (q *TimeQueue) run() {
 	for {
 		select {
 		case <-q.wakeChan:
-			q.releaseSingleMessage()
-			q.spawnNextWakeSignal()
+			q.onWake()
 		case <-q.stopChan:
 			break
 		}
 	}
+}
+
+func (q *TimeQueue) onWake() {
+	q.releaseSingleMessage()
+	q.setWakeSignal(nil)
+	q.createAndSpawnWakeSignal()
 }
 
 func (q *TimeQueue) releaseSingleMessage() {
@@ -131,16 +140,30 @@ func (q *TimeQueue) releaseSingleMessage() {
 	go func() {
 		q.messageChan <- message
 	}()
-	q.setWakeSignal(nil)
 }
 
-func (q *TimeQueue) spawnNextWakeSignal() {
+func (q *TimeQueue) createAndSpawnWakeSignal() {
 	q.killWakeSignal()
 	message := q.PeekMessage()
 	if message == nil {
 		return
 	}
-	q.setAndSpawnWakeSignal(message.Time)
+	q.setWakeSignal(newWakeSignal(q.wakeChan, message.Time))
+	q.spawnWakeSignal()
+}
+
+func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
+	q.wakeSignal = wakeSignal
+}
+
+func (q *TimeQueue) spawnWakeSignal() {
+	q.stateLock.RLock()
+	defer q.stateLock.RUnlock()
+	if q.wakeSignal != nil {
+		q.wakeSignal.spawn()
+	}
 }
 
 func (q *TimeQueue) killWakeSignal() {
@@ -149,19 +172,6 @@ func (q *TimeQueue) killWakeSignal() {
 	if q.wakeSignal != nil {
 		q.wakeSignal.kill()
 	}
-}
-
-func (q *TimeQueue) setAndSpawnWakeSignal(wakeTime time.Time) {
-	q.setWakeSignal(newWakeSignal(q.wakeChan, wakeTime))
-	q.stateLock.RLock()
-	defer q.stateLock.RUnlock()
-	q.wakeSignal.spawn()
-}
-
-func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
-	q.wakeSignal = wakeSignal
 }
 
 func (q *TimeQueue) Stop() {
