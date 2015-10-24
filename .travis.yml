@@ -1,0 +1,23 @@
+language: go
+
+go:
+  - 1.5.1
+
+notifications:
+  email:
+    recipients:
+        - eric.elsken@gmail.com
+    on_success: change
+    on_failure: change
+
+install:
+  - go get github.com/axw/gocov/gocov
+  - go get github.com/mattn/goveralls
+  - go get -t ./...
+
+script:
+  - ./.travis.test.sh
+
+after_success:
+  - gocov convert *.cov > profile.cov.json
+  - goveralls -gocovdata profile.cov.json -repotoken $COVERALLS_TOKEN -service travis-org
