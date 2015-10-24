@@ -37,16 +37,18 @@ func TestNewSize(t *testing.T) {
 	}
 }
 
-func TestPush(t *testing.T) {
+func TestTimeQueue_Push(t *testing.T) {
 	q := New()
-	q.Push(time.Time{}, "test_data")
+	message := q.Push(time.Time{}, "test_data")
 	size := q.messageHeap.Len()
 	if size != 1 {
 		t.Errorf("q.messageHeap.Len() = %v WANT %v", size, 1)
 	}
-	message := q.messageHeap[0]
 	if message == nil {
 		t.Errorf("message = nil WANT non-nil")
+	}
+	if message != q.messageHeap[0] {
+		t.Errorf("return message should equal peel message")
 	}
 	if !message.Time.Equal(time.Time{}) {
 		t.Errorf("message.Time = %v WANT %v", message.Time, time.Time{})
@@ -56,7 +58,7 @@ func TestPush(t *testing.T) {
 	}
 }
 
-func TestPushMessage_nil(t *testing.T) {
+func TestTimeQueue_PushMessage_nil(t *testing.T) {
 	q := New()
 	q.PushMessage(nil)
 	size := q.messageHeap.Len()
@@ -65,7 +67,7 @@ func TestPushMessage_nil(t *testing.T) {
 	}
 }
 
-func TestPushMessage_nonNil(t *testing.T) {
+func TestTimeQueue_PushMessage_nonNil(t *testing.T) {
 	q := New()
 	message := &Message{
 		Time: time.Time{},
@@ -78,5 +80,40 @@ func TestPushMessage_nonNil(t *testing.T) {
 	}
 	if q.messageHeap[0] != message {
 		t.Errorf("q.messageHeap[0] = %v WANT %v", q.messageHeap[0], message)
+	}
+}
+
+func TestTimeQueue_Peek_nil(t *testing.T) {
+	q := New()
+	peekTime, data := q.Peek()
+	if !peekTime.IsZero() || data != nil {
+		t.Errorf("q.Peek() = %v, %v WANT %v, %v", peekTime, data, time.Time{}, nil)
+	}
+}
+
+func TestTimeQueue_Peek_nonNil(t *testing.T) {
+	q := New()
+	now := time.Now()
+	q.Push(now, "test_data")
+	peekTime, data := q.Peek()
+	if !peekTime.Equal(now) || data != "test_data" {
+		t.Errorf("q.Peek() = %v, %v WANT %v, %v", peekTime, data, now, "test_data")
+	}
+}
+
+func TestTimeQueue_PeekMessage_nil(t *testing.T) {
+	q := New()
+	message := q.PeekMessage()
+	if message != nil {
+		t.Errorf("q.PeekMessage() = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_PeekMessage_nonNil(t *testing.T) {
+	q := New()
+	want := q.Push(time.Now(), "test_data")
+	actual := q.PeekMessage()
+	if actual == nil || actual != want {
+		t.Errorf("q.PeekMessage() = %v WANT %v", actual, want)
 	}
 }
