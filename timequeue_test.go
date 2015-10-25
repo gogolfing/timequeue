@@ -282,22 +282,6 @@ func TestTimeQueue_Start_running(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_IsRunning(t *testing.T) {
-	tests := []struct {
-		value bool
-	}{
-		{true},
-		{false},
-	}
-	for _, test := range tests {
-		q := New()
-		q.running = test.value
-		if result := q.IsRunning(); result != test.value {
-			t.Errorf("q.IsRunning() = %v WANT %v", result, test.value)
-		}
-	}
-}
-
 func TestTimeQueue_run(t *testing.T) {
 	q := New()
 	go func() {
@@ -403,6 +387,177 @@ func TestTimeQueue_releaseChan(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestTimeQueue_updateAndSpawnWakeSignal_empty(t *testing.T) {
+	q := New()
+	if result := q.updateAndSpawnWakeSignal(); result != false {
+		t.Errorf("q.updateAndSpawnWakeSignal() = %v WANT %v", result, false)
+	}
+}
+
+func TestTimeQueue_updateAndSpawnWakeSignal_nonEmpty(t *testing.T) {
+	q := New()
+	wantMessage := q.Push(time.Now().Add(time.Duration(250)*time.Millisecond), 0)
+	if result := q.updateAndSpawnWakeSignal(); result != true {
+		t.Fatalf("q.updateAndSpawnWakeSignal() = %v WANT %v", result, true)
+	}
+	if q.wakeSignal == nil {
+		t.Errorf("q.wakeSignal = nil WANT non-nil")
+	}
+	go q.run()
+	if message := <-q.Messages(); message != wantMessage {
+		t.Errorf("q.Messages() = %v WANT %v", message, wantMessage)
+	}
+}
+
+func TestTimeQueue_setWakeSignal(t *testing.T) {
+	q := New()
+	ws := newWakeSignal(q.wakeChan, time.Now())
+	q.setWakeSignal(ws)
+	if q.wakeSignal != ws {
+		t.Errorf("q.wakeSignal = %v WANT %v", q.wakeSignal, ws)
+	}
+}
+
+func TestTimeQueue_spawnWakeSignal_nil(t *testing.T) {
+	q := New()
+	if result := q.spawnWakeSignal(); result != false {
+		t.Errorf("q.spawnWakeSignal() = %v WANT %v", result, false)
+	}
+}
+
+func TestTimeQueue_spawnWakeSignal_nonNil(t *testing.T) {
+	q := New()
+	ws := newWakeSignal(q.wakeChan, time.Now().Add(time.Duration(1)*time.Second))
+	ws.kill()
+	q.setWakeSignal(ws)
+	if result := q.spawnWakeSignal(); result != true {
+		t.Errorf("q.spawnWakeSignal() = %v WANT %v", result, true)
+	}
+}
+
+func TestTimeQueue_killWakeSignal_nil(t *testing.T) {
+	q := New()
+	if result := q.killWakeSignal(); result != false {
+		t.Errorf("q.killWakeSignal() = %v WANT %v", result, false)
+	}
+}
+
+func TestTimeQueue_killWakeSignal_nonNil(t *testing.T) {
+	q := New()
+	q.setWakeSignal(newWakeSignal(q.wakeChan, time.Now().Add(time.Duration(1)*time.Second)))
+	if result := q.killWakeSignal(); result != true {
+		t.Errorf("q.killWakeSignal() = %v WANT %v", result, true)
+	}
+}
+
+func TestTimeQueue_Stop_notRunning(t *testing.T) {
+	q := New()
+	q.Stop()
+}
+
+func TestTimeQueue_Stop_running(t *testing.T) {
+	q := New()
+	q.setRunning(true)
+	q.Stop()
+	q.run()
+	if result := q.IsRunning(); result != false {
+		t.Errorf("q.IsRunning() = %v WANT %v", result, false)
+	}
+}
+
+func TestTimeQueue_IsRunning(t *testing.T) {
+	tests := []struct {
+		value bool
+	}{
+		{true},
+		{false},
+	}
+	for _, test := range tests {
+		q := New()
+		q.running = test.value
+		if result := q.IsRunning(); result != test.value {
+			t.Errorf("q.IsRunning() = %v WANT %v", result, test.value)
+		}
+	}
+}
+
+func TestTimeQueue_setRunning(t *testing.T) {
+	tests := []struct {
+		value bool
+	}{
+		{false},
+		{true},
+	}
+	for _, test := range tests {
+		q := New()
+		q.setRunning(test.value)
+		if result := q.running; result != test.value {
+			t.Errorf("q.running = %v WANT %v", result, test.value)
+		}
+	}
+}
+
+func TestNewWakeSignal(t *testing.T) {
+	dst := make(chan time.Time)
+	wakeTime := time.Now()
+	ws := newWakeSignal(dst, wakeTime)
+	if ws.dst != dst {
+		t.Errorf("ws.dst = %v WANT %v", ws.dst, dst)
+	}
+	if ws.src == nil {
+		t.Errorf("ws.src = nil WANT non-nil")
+	}
+	if cap(ws.src) != 1 {
+		t.Errorf("cap(ws.src) = %v WANT %v", cap(ws.src), 1)
+	}
+	if ws.stop == nil {
+		t.Errorf("ws.stop = nil WANT non-nil")
+	}
+	if cap(ws.stop) != 0 {
+		t.Errorf("cap(ws.stop) = %v WANT %v", cap(ws.stop), 0)
+	}
+}
+
+func TestWakeSignal_spawn_wake(t *testing.T) {
+	dst := make(chan time.Time)
+	now := time.Now()
+	ws := newWakeSignal(dst, now)
+	ws.spawn()
+	result := <-dst
+	time.Sleep(time.Duration(250) * time.Millisecond)
+	diff := result.Sub(now)
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > time.Duration(1)*time.Millisecond {
+		t.Errorf("<-ws.dst too far away from desired : %v WANT %v", result, now)
+	}
+	if ws.src != nil {
+		t.Errorf("ws.src = nil WANT non-nil")
+	}
+}
+
+func TestWakeSignal_spawn_stop(t *testing.T) {
+	ws := newWakeSignal(nil, time.Now().Add(time.Duration(1)*time.Second))
+	ws.spawn()
+	ws.stop <- struct{}{}
+	time.Sleep(time.Duration(250) * time.Millisecond)
+	if ws.src != nil {
+		t.Errorf("ws.src = nil WANT non-nil")
+	}
+}
+
+func TestWakeSignal_kill(t *testing.T) {
+	ws := newWakeSignal(nil, time.Now())
+	ws.kill()
+	defer func() {
+		if result := recover(); result == nil {
+			t.Errorf("kill() kill() recover() = nil WANT non-nil")
+		}
+	}()
+	ws.kill()
 }
 
 func cloneMessages(messages []*Message) []*Message {
