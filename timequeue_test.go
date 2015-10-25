@@ -225,6 +225,38 @@ func TestTimeQueue_PopAllUntil(t *testing.T) {
 	}
 }
 
+func TestTimeQueue_afterHeapUpdate_notRunning(t *testing.T) {
+	q := New()
+	q.afterHeapUpdate()
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_afterHeapUpdate_running(t *testing.T) {
+	q := New()
+	q.setRunning(true)
+	q.afterHeapUpdate()
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_Messages(t *testing.T) {
+	q := New()
+	if q.Messages() != q.messageChan {
+		t.Errorf("q.Messages() != q.messageChan")
+	}
+}
+
+func TestTimeQueue_Size(t *testing.T) {
+	q := New()
+	q.Push(time.Now(), 0)
+	if q.Size() != 1 {
+		t.Errorf("q.Size() = %v WANT %v", q.Size(), 1)
+	}
+}
+
 func cloneMessages(messages []*Message) []*Message {
 	if messages == nil {
 		return nil
