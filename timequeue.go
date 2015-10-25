@@ -20,7 +20,7 @@ type TimeQueue struct {
 
 	messageChan chan *Message
 	stopChan    chan struct{}
-	wakeChan    chan struct{}
+	wakeChan    chan time.Time
 }
 
 func New() *TimeQueue {
@@ -36,7 +36,7 @@ func NewSize(size int) *TimeQueue {
 		wakeSignal:  nil,
 		messageChan: make(chan *Message, size),
 		stopChan:    make(chan struct{}),
-		wakeChan:    make(chan struct{}),
+		wakeChan:    make(chan time.Time),
 	}
 	heap.Init(&q.messageHeap)
 	return q
@@ -85,7 +85,7 @@ func (q *TimeQueue) Pop(release bool) *Message {
 	}
 	message := heap.Pop(&q.messageHeap).(*Message)
 	if release {
-		q.release(message)
+		q.releaseMessage(message)
 	}
 	return message
 }
@@ -100,7 +100,7 @@ func (q *TimeQueue) PopAll(release bool) []*Message {
 		result = append(result, message)
 	}
 	if release {
-		q.release(result...)
+		q.releaseCopyToChan(result)
 	}
 	return result
 }
@@ -118,7 +118,7 @@ func (q *TimeQueue) PopAllUntil(until time.Time, release bool) []*Message {
 		result = append(result, heap.Pop(&q.messageHeap).(*Message))
 	}
 	if release {
-		q.release(result...)
+		q.releaseCopyToChan(result)
 	}
 	return result
 }
@@ -158,33 +158,42 @@ func (q *TimeQueue) run() {
 runLoop:
 	for {
 		select {
-		case <-q.wakeChan:
-			q.onWake()
+		case wakeTime := <-q.wakeChan:
+			q.onWake(wakeTime)
 		case <-q.stopChan:
 			break runLoop
 		}
 	}
 }
 
-func (q *TimeQueue) onWake() {
-	q.releaseSingleMessage()
+func (q *TimeQueue) onWake(wakeTime time.Time) {
+	q.releaseUntil(wakeTime)
 	q.setWakeSignal(nil)
 	q.updateAndSpawnWakeSignal()
 }
 
-func (q *TimeQueue) releaseSingleMessage() {
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	if len(q.messageHeap) == 0 {
-		return
-	}
-	message := heap.Pop(&q.messageHeap).(*Message)
-	q.release(message)
+func (q *TimeQueue) releaseUntil(until time.Time) {
+	q.PopAllUntil(until, true)
 }
 
-func (q *TimeQueue) release(messages ...*Message) {
+func (q *TimeQueue) releaseMessage(message *Message) {
 	go func() {
-		for _, message := range messages {
+		q.messageChan <- message
+	}()
+}
+
+func (q *TimeQueue) releaseCopyToChan(messages []*Message) {
+	copyChan := make(chan *Message, len(messages))
+	for _, message := range messages {
+		copyChan <- message
+	}
+	q.releasecChan(copyChan)
+	close(copyChan)
+}
+
+func (q *TimeQueue) releasecChan(messages <-chan *Message) {
+	go func() {
+		for message := range messages {
 			q.messageChan <- message
 		}
 	}()
@@ -240,12 +249,12 @@ func (q *TimeQueue) setRunning(running bool) {
 }
 
 type wakeSignal struct {
-	dst  chan struct{}
+	dst  chan time.Time
 	src  <-chan time.Time
 	stop chan struct{}
 }
 
-func newWakeSignal(dst chan struct{}, wakeTime time.Time) *wakeSignal {
+func newWakeSignal(dst chan time.Time, wakeTime time.Time) *wakeSignal {
 	return &wakeSignal{
 		dst:  dst,
 		src:  time.After(wakeTime.Sub(time.Now())),
@@ -256,8 +265,8 @@ func newWakeSignal(dst chan struct{}, wakeTime time.Time) *wakeSignal {
 func (w *wakeSignal) spawn() {
 	go func() {
 		select {
-		case <-w.src:
-			w.dst <- struct{}{}
+		case wakeTime := <-w.src:
+			w.dst <- wakeTime
 		case <-w.stop:
 		}
 		w.src = nil

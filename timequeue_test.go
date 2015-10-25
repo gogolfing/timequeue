@@ -257,6 +257,154 @@ func TestTimeQueue_Size(t *testing.T) {
 	}
 }
 
+func TestTimeQueue_Start_notRunning(t *testing.T) {
+	q := New()
+	q.setRunning(true)
+	q.Start()
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_Start_running(t *testing.T) {
+	q := New()
+	message := q.Push(time.Now().Add(time.Duration(200)*time.Millisecond), "test_data")
+	q.Start()
+	defer q.Stop()
+	if q.wakeSignal == nil {
+		t.Errorf("q.wakeSignal = nil WANT non-nil")
+	}
+	if running := q.IsRunning(); !running {
+		t.Errorf("running = %v WANT %v", running, true)
+	}
+	if result := <-q.Messages(); result != message {
+		t.Errorf("message = %v WANT %v", result, message)
+	}
+}
+
+func TestTimeQueue_IsRunning(t *testing.T) {
+	tests := []struct {
+		value bool
+	}{
+		{true},
+		{false},
+	}
+	for _, test := range tests {
+		q := New()
+		q.running = test.value
+		if result := q.IsRunning(); result != test.value {
+			t.Errorf("q.IsRunning() = %v WANT %v", result, test.value)
+		}
+	}
+}
+
+func TestTimeQueue_run(t *testing.T) {
+	q := New()
+	go func() {
+		q.wakeChan <- time.Now()
+		q.stopChan <- struct{}{}
+	}()
+	q.run()
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+	if count := len(q.messageChan); count != 0 {
+		t.Errorf("len(q.messageChan) = %v WANT %v", count, 0)
+	}
+}
+
+func TestTimeQueue_onWake(t *testing.T) {
+	q := New()
+	now := time.Now()
+	for i := 0; i < 4; i++ {
+		q.Push(now.Add(time.Duration(i)), i)
+	}
+	q.onWake(now.Add(4))
+	for i := 0; i < 4; i++ {
+		message := <-q.Messages()
+		if message.Data != i {
+			t.Errorf("message.Data = %v WANT %v", message.Data, i)
+		}
+	}
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_releaseUntil(t *testing.T) {
+	q := New()
+	now := time.Now()
+	for i := 4; i >= 0; i-- {
+		q.Push(now.Add(time.Duration(i)), i)
+	}
+	q.releaseUntil(now.Add(5))
+	for i := 0; i <= 4; i++ {
+		message := <-q.Messages()
+		if message.Data != i {
+			t.Errorf("message.Data = %v WANT %v", message.Data, i)
+		}
+	}
+	if size := q.Size(); size != 0 {
+		t.Errorf("q.Size() = %v WANT %v", size, 0)
+	}
+	if q.wakeSignal != nil {
+		t.Errorf("q.wakeSignal = non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_releaseMessage(t *testing.T) {
+	q := New()
+	q.releaseMessage(&Message{time.Now(), 0})
+	if message := <-q.Messages(); message.Data != 0 {
+		t.Errorf("message.Data = %v WANT %v", message.Data, 0)
+	}
+}
+
+func TestTimeQueue_releaseCopyToChan(t *testing.T) {
+	tests := []struct {
+		messages []*Message
+	}{
+		{nil},
+		{[]*Message{}},
+		{[]*Message{{time.Now(), 0}, {time.Now(), 1}}},
+	}
+	for _, test := range tests {
+		q := New()
+		q.releaseCopyToChan(test.messages)
+		for _, wantMessage := range test.messages {
+			if message := <-q.Messages(); message != wantMessage {
+				t.Errorf("q.Messages() = %v	WANT %v", message, wantMessage)
+			}
+		}
+	}
+}
+
+func TestTimeQueue_releaseChan(t *testing.T) {
+	tests := []struct {
+		messages []*Message
+	}{
+		{nil},
+		{[]*Message{}},
+		{[]*Message{{time.Now(), 0}, {time.Now(), 1}}},
+	}
+	for _, test := range tests {
+		q := New()
+		out := make(chan *Message)
+		go func() {
+			for _, message := range test.messages {
+				out <- message
+			}
+			close(out)
+		}()
+		q.releasecChan(out)
+		for _, wantMessage := range test.messages {
+			if message := <-q.Messages(); message != wantMessage {
+				t.Errorf("q.Messages() = %v	WANT %v", message, wantMessage)
+			}
+		}
+	}
+}
+
 func cloneMessages(messages []*Message) []*Message {
 	if messages == nil {
 		return nil
