@@ -1,6 +1,8 @@
 package timequeue
 
 import (
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 )
@@ -116,4 +118,132 @@ func TestTimeQueue_PeekMessage_nonNil(t *testing.T) {
 	if actual == nil || actual != want {
 		t.Errorf("q.PeekMessage() = %v WANT %v", actual, want)
 	}
+}
+
+func TestTimeQueue_Pop_empty(t *testing.T) {
+	q := New()
+	message := q.Pop(false)
+	if message != nil {
+		t.Errorf("q.Pop() is non-nil WANT nil")
+	}
+}
+
+func TestTimeQueue_Pop_nonEmptyRelease(t *testing.T) {
+	q := New()
+	want := q.Push(time.Now(), "test_data")
+	actual := q.Pop(true)
+	if actual != want {
+		t.Errorf("q.Pop() return = %v WANT %v", actual, want)
+	}
+	actual = <-q.Messages()
+	if actual != want {
+		t.Errorf("q.Pop() Messages() = %v WANT %v", actual, want)
+	}
+	if len(q.Messages()) != 0 {
+		t.Errorf("len(q.Messages()) = %v WANT %v", len(q.Messages()), 0)
+	}
+}
+
+func TestTimeQueue_Pop_nonEmptyNonRelease(t *testing.T) {
+	q := New()
+	want := q.Push(time.Now(), "test_data")
+	actual := q.Pop(true)
+	if actual != want {
+		t.Errorf("q.Pop() return = %v WANT %v", actual, want)
+	}
+}
+
+func TestTimeQueue_PopAll(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		messages []*Message
+		release  bool
+	}{
+		{[]*Message{}, false},
+		{[]*Message{}, true},
+		{[]*Message{{now, 0}}, false},
+		{[]*Message{{now, 0}}, true},
+		{[]*Message{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true},
+		{[]*Message{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true},
+	}
+	for _, test := range tests {
+		q := New()
+		for _, message := range test.messages {
+			q.PushMessage(message)
+		}
+		result := q.PopAll(test.release)
+		sorted := cloneMessages(test.messages)
+		sort.Sort(messageHeap(sorted))
+		if !areMessagesEqual(result, sorted) {
+			t.Errorf("q.PopAll() messages sorted = %v WANT %v", result, sorted)
+		}
+		if test.release && !areChannelMessagesEqual(q.Messages(), sorted) {
+			t.Errorf("q.PopAll() Messages() sorted WANT %v", sorted)
+		}
+		if len(q.Messages()) != 0 {
+			t.Errorf("len(q.Messages() = %v WANT %v", len(q.Messages()), 0)
+		}
+	}
+}
+
+func TestTimeQueue_PopAllUntil(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		messages   []*Message
+		release    bool
+		untilTime  time.Time
+		untilCount int
+	}{
+		{[]*Message{}, false, now.Add(10), 0},
+		{[]*Message{}, true, now.Add(-10), 0},
+		{[]*Message{{now, 0}}, true, now, 0},
+		{[]*Message{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true, now.Add(2), 2},
+		{[]*Message{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 3},
+		{[]*Message{{now.Add(4), 4}, {now.Add(-1), -1}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 4},
+	}
+	for _, test := range tests {
+		q := New()
+		for _, message := range test.messages {
+			q.PushMessage(message)
+		}
+		result := q.PopAllUntil(test.untilTime, test.release)
+		sorted := cloneMessages(test.messages)
+		sort.Sort(messageHeap(sorted))
+		sorted = sorted[:test.untilCount]
+		if !areMessagesEqual(result, sorted) {
+			t.Errorf("q.PopAllUntil() messages sorted = %v WANT %v", result, sorted)
+		}
+		if test.release && !areChannelMessagesEqual(q.Messages(), sorted) {
+			t.Errorf("q.PopAllUntil() Messages() sorted WANT %v", sorted)
+		}
+		if len(q.messageHeap) != len(test.messages)-test.untilCount {
+			t.Errorf("len(q.messageHeap) = %v WANT %v", len(q.messageHeap), len(test.messages)-test.untilCount)
+		}
+		if len(q.Messages()) != 0 {
+			t.Errorf("len(q.Messages()) = %v WANT %v", len(q.Messages()), 0)
+		}
+	}
+}
+
+func cloneMessages(messages []*Message) []*Message {
+	if messages == nil {
+		return nil
+	}
+	result := make([]*Message, 0, len(messages))
+	for _, message := range messages {
+		result = append(result, message)
+	}
+	return result
+}
+
+func areChannelMessagesEqual(actualChan <-chan *Message, want []*Message) bool {
+	actual := []*Message{}
+	for i := 0; i < len(want); i++ {
+		actual = append(actual, <-actualChan)
+	}
+	return areMessagesEqual(actual, want)
+}
+
+func areMessagesEqual(actual, want []*Message) bool {
+	return (len(actual) == 0 && len(want) == 0) || reflect.DeepEqual(actual, want)
 }

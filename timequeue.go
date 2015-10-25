@@ -99,23 +99,27 @@ func (q *TimeQueue) PopAll(release bool) []*Message {
 		message := heap.Pop(&q.messageHeap).(*Message)
 		result = append(result, message)
 	}
-	q.release(result...)
+	if release {
+		q.release(result...)
+	}
 	return result
 }
 
-func (q *TimeQueue) PopUntil(until time.Time) []*Message {
+func (q *TimeQueue) PopAllUntil(until time.Time, release bool) []*Message {
 	defer q.afterHeapUpdate()
 	q.messageLock.Lock()
 	defer q.messageLock.Unlock()
 	result := make([]*Message, 0, q.messageHeap.Len())
 	for q.messageHeap.Len() > 0 {
-		message := heap.Pop(&q.messageHeap).(*Message)
+		message := q.messageHeap[0]
 		if message.Time.Sub(until) >= 0 {
 			break
 		}
-		result = append(result, message)
+		result = append(result, heap.Pop(&q.messageHeap).(*Message))
 	}
-	q.release(result...)
+	if release {
+		q.release(result...)
+	}
 	return result
 }
 

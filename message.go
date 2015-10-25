@@ -11,7 +11,7 @@ type Message struct {
 }
 
 func (m *Message) String() string {
-	return fmt.Sprintf("%#v", m)
+	return fmt.Sprintf("&%v", *m)
 }
 
 type messageHeap []*Message
