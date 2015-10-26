@@ -112,7 +112,7 @@ func (q *TimeQueue) PopAllUntil(until time.Time, release bool) []*Message {
 	result := make([]*Message, 0, q.messageHeap.Len())
 	for q.messageHeap.Len() > 0 {
 		message := q.messageHeap[0]
-		if message.Time.Sub(until) >= 0 {
+		if !message.Before(until) {
 			break
 		}
 		result = append(result, heap.Pop(&q.messageHeap).(*Message))
@@ -146,6 +146,12 @@ func (q *TimeQueue) Start() {
 	q.setRunning(true)
 	go q.run()
 	q.updateAndSpawnWakeSignal()
+}
+
+func (q *TimeQueue) IsRunning() bool {
+	q.stateLock.RLock()
+	defer q.stateLock.RUnlock()
+	return q.running
 }
 
 func (q *TimeQueue) run() {
@@ -238,12 +244,6 @@ func (q *TimeQueue) Stop() {
 	go func() {
 		q.stopChan <- struct{}{}
 	}()
-}
-
-func (q *TimeQueue) IsRunning() bool {
-	q.stateLock.RLock()
-	defer q.stateLock.RUnlock()
-	return q.running
 }
 
 func (q *TimeQueue) setRunning(running bool) {

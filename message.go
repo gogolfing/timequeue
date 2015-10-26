@@ -21,7 +21,7 @@ func (mh messageHeap) Len() int {
 }
 
 func (mh messageHeap) Less(i, j int) bool {
-	return mh[i].Time.Sub(mh[j].Time) < 0
+	return mh[i].Time.Before(mh[j].Time)
 }
 
 func (mh messageHeap) Swap(i, j int) {
