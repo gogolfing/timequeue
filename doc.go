@@ -1,6 +1,7 @@
 //Package timequeue provides the TimeQueue type that is a queue of Messages.
 //Each Message contains a time.Time that describes the time at which the Message should be released from the queue.
 //Message types also have a Data field of type interface{} that should be used as the payload of the Message.
+//TimeQueue is safe for use by multiple go-routines.
 //
 //Messages need only be pushed to the queue, and then when their time.Time passes (via time.After()),
 //they will be sent on the channel returned by Messages(). See below for examples.
