@@ -24,17 +24,17 @@ type TimeQueue struct {
 }
 
 func New() *TimeQueue {
-	return NewSize(DefaultSize)
+	return NewCapacity(DefaultSize)
 }
 
-func NewSize(size int) *TimeQueue {
+func NewCapacity(capacity int) *TimeQueue {
 	q := &TimeQueue{
 		messageLock: &sync.RWMutex{},
 		messageHeap: messageHeap([]*Message{}),
 		stateLock:   &sync.RWMutex{},
 		running:     false,
 		wakeSignal:  nil,
-		messageChan: make(chan *Message, size),
+		messageChan: make(chan *Message, capacity),
 		stopChan:    make(chan struct{}),
 		wakeChan:    make(chan time.Time),
 	}

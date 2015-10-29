@@ -15,7 +15,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewSize(t *testing.T) {
-	q := NewSize(2)
+	q := NewCapacity(2)
 	if q.messageLock == nil || q.messageHeap == nil {
 		t.Errorf("NewSize() messageLock and messageHeap should be non-nil")
 	}
