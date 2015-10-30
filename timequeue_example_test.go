@@ -1,6 +1,12 @@
 package timequeue_test
 
-/*
+import (
+	"fmt"
+	"time"
+
+	"github.com/gogolfing/timequeue"
+)
+
 func Example() {
 	tq := timequeue.New()
 	tq.Start()
@@ -59,4 +65,3 @@ func Example() {
 	//there are 0 messages left in the queue
 	//releasing all messages took more than 8 seconds
 }
-*/
