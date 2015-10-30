@@ -16,14 +16,11 @@ func TestNew(t *testing.T) {
 
 func TestNewSize(t *testing.T) {
 	q := NewCapacity(2)
-	if q.messageLock == nil || q.messageHeap == nil {
-		t.Errorf("NewSize() messageLock and messageHeap should be non-nil")
+	if size := q.messages.Len(); size != 0 {
+		t.Errorf("NewSize() q.messges.Len() = %v WANT %v", size, 0)
 	}
-	if q.messageHeap.Len() != 0 {
-		t.Errorf("NewSize() len(messageHeap) = %v WANT %v", len(q.messageHeap), 0)
-	}
-	if q.stateLock == nil {
-		t.Errorf("NewSize() stateLock should be non-nil")
+	if q.lock == nil {
+		t.Errorf("NewSize() lock should be non-nil")
 	}
 	if q.running == true {
 		t.Errorf("NewSize() running = %v WANT %v", q.running, false)
@@ -42,15 +39,15 @@ func TestNewSize(t *testing.T) {
 func TestTimeQueue_Push(t *testing.T) {
 	q := New()
 	message := q.Push(time.Time{}, "test_data")
-	size := q.messageHeap.Len()
+	size := q.messages.Len()
 	if size != 1 {
-		t.Errorf("q.messageHeap.Len() = %v WANT %v", size, 1)
+		t.Errorf("q.messages.Len() = %v WANT %v", size, 1)
 	}
 	if message == nil {
 		t.Errorf("message = nil WANT non-nil")
 	}
-	if message != q.messageHeap[0] {
-		t.Errorf("return message should equal peel message")
+	if message != q.messages.peekMessage() {
+		t.Errorf("return message should equal peek message")
 	}
 	if !message.Time.Equal(time.Time{}) {
 		t.Errorf("message.Time = %v WANT %v", message.Time, time.Time{})
@@ -63,9 +60,9 @@ func TestTimeQueue_Push(t *testing.T) {
 func TestTimeQueue_PushMessage_nil(t *testing.T) {
 	q := New()
 	q.PushMessage(nil)
-	size := q.messageHeap.Len()
+	size := q.messages.Len()
 	if size != 0 {
-		t.Errorf("q.messageHeap.Len() = %v WANT %v", size, 0)
+		t.Errorf("q.messages.Len() = %v WANT %v", size, 0)
 	}
 }
 
@@ -76,12 +73,12 @@ func TestTimeQueue_PushMessage_nonNil(t *testing.T) {
 		Data: "test_data",
 	}
 	q.PushMessage(message)
-	size := q.messageHeap.Len()
+	size := q.messages.Len()
 	if size != 1 {
-		t.Errorf("q.messageHeap.Len() = %v WANT %v", size, 1)
+		t.Errorf("q.messages.Len() = %v WANT %v", size, 1)
 	}
-	if q.messageHeap[0] != message {
-		t.Errorf("q.messageHeap[0] = %v WANT %v", q.messageHeap[0], message)
+	if peek := q.messages.peekMessage(); peek != message {
+		t.Errorf("q.messages[0] = %v WANT %v", peek, message)
 	}
 }
 
@@ -172,12 +169,12 @@ func TestTimeQueue_PopAll(t *testing.T) {
 			q.PushMessage(message)
 		}
 		result := q.PopAll(test.release)
-		sorted := cloneMessages(test.messages)
-		sort.Sort(messageHeap(sorted))
-		if !areMessagesEqual(result, sorted) {
+		sorted := newMessageHeap(cloneMessages(test.messages)...)
+		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
+		if !areMessagesEqual(result, sorted.messages) {
 			t.Errorf("q.PopAll() messages sorted = %v WANT %v", result, sorted)
 		}
-		if test.release && !areChannelMessagesEqual(q.Messages(), sorted) {
+		if test.release && !areChannelMessagesEqual(q.Messages(), sorted.messages) {
 			t.Errorf("q.PopAll() Messages() sorted WANT %v", sorted)
 		}
 		if len(q.Messages()) != 0 {
@@ -207,17 +204,17 @@ func TestTimeQueue_PopAllUntil(t *testing.T) {
 			q.PushMessage(message)
 		}
 		result := q.PopAllUntil(test.untilTime, test.release)
-		sorted := cloneMessages(test.messages)
-		sort.Sort(messageHeap(sorted))
-		sorted = sorted[:test.untilCount]
-		if !areMessagesEqual(result, sorted) {
+		sorted := newMessageHeap(cloneMessages(test.messages)...)
+		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
+		want := sorted.messages[:test.untilCount]
+		if !areMessagesEqual(result, want) {
 			t.Errorf("q.PopAllUntil() messages sorted = %v WANT %v", result, sorted)
 		}
-		if test.release && !areChannelMessagesEqual(q.Messages(), sorted) {
+		if test.release && !areChannelMessagesEqual(q.Messages(), want) {
 			t.Errorf("q.PopAllUntil() Messages() sorted WANT %v", sorted)
 		}
-		if len(q.messageHeap) != len(test.messages)-test.untilCount {
-			t.Errorf("len(q.messageHeap) = %v WANT %v", len(q.messageHeap), len(test.messages)-test.untilCount)
+		if q.messages.Len() != len(test.messages)-test.untilCount {
+			t.Errorf("len(q.messages) = %v WANT %v", q.messages.Len(), len(test.messages)-test.untilCount)
 		}
 		if len(q.Messages()) != 0 {
 			t.Errorf("len(q.Messages()) = %v WANT %v", len(q.Messages()), 0)
@@ -315,13 +312,13 @@ func TestTimeQueue_onWake(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_releaseUntil(t *testing.T) {
+func TestTimeQueue_popAllUntil(t *testing.T) {
 	q := New()
 	now := time.Now()
 	for i := 4; i >= 0; i-- {
 		q.Push(now.Add(time.Duration(i)), i)
 	}
-	q.releaseUntil(now.Add(5))
+	q.popAllUntil(now.Add(5), true)
 	for i := 0; i <= 4; i++ {
 		message := <-q.Messages()
 		if message.Data != i {

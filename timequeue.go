@@ -1,7 +1,6 @@
 package timequeue
 
 import (
-	"container/heap"
 	"sync"
 	"time"
 )
@@ -11,10 +10,10 @@ const (
 )
 
 type TimeQueue struct {
-	messageLock *sync.Mutex
-	messageHeap messageHeap
+	lock *sync.Mutex
 
-	stateLock  *sync.Mutex
+	messages *messageHeap
+
 	running    bool
 	wakeSignal *wakeSignal
 
@@ -28,18 +27,15 @@ func New() *TimeQueue {
 }
 
 func NewCapacity(capacity int) *TimeQueue {
-	q := &TimeQueue{
-		messageLock: &sync.Mutex{},
-		messageHeap: messageHeap([]*Message{}),
-		stateLock:   &sync.Mutex{},
+	return &TimeQueue{
+		lock:        &sync.Mutex{},
+		messages:    newMessageHeap(),
 		running:     false,
 		wakeSignal:  nil,
 		messageChan: make(chan *Message, capacity),
 		stopChan:    make(chan struct{}),
 		wakeChan:    make(chan time.Time),
 	}
-	heap.Init(&q.messageHeap)
-	return q
 }
 
 func (q *TimeQueue) Push(time time.Time, data interface{}) *Message {
@@ -52,11 +48,10 @@ func (q *TimeQueue) Push(time time.Time, data interface{}) *Message {
 }
 
 func (q *TimeQueue) PushMessage(message *Message) {
-	if message == nil {
-		return
-	}
-	heap.Push(&q.messageHeap, message)
-	defer q.afterHeapUpdate()
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	q.messages.pushMessage(message)
+	q.afterHeapUpdate()
 }
 
 func (q *TimeQueue) Peek() (time.Time, interface{}) {
@@ -68,63 +63,63 @@ func (q *TimeQueue) Peek() (time.Time, interface{}) {
 }
 
 func (q *TimeQueue) PeekMessage() *Message {
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	if len(q.messageHeap) > 0 {
-		return q.messageHeap[0]
-	}
-	return nil
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return q.peekMessage()
+}
+
+func (q *TimeQueue) peekMessage() *Message {
+	return q.messages.peekMessage()
 }
 
 func (q *TimeQueue) Pop(release bool) *Message {
-	defer q.afterHeapUpdate()
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	if len(q.messageHeap) == 0 {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	message := q.messages.popMessage()
+	if message == nil {
 		return nil
 	}
-	message := heap.Pop(&q.messageHeap).(*Message)
 	if release {
 		q.releaseMessage(message)
 	}
+	q.afterHeapUpdate()
 	return message
 }
 
 func (q *TimeQueue) PopAll(release bool) []*Message {
-	defer q.afterHeapUpdate()
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	result := make([]*Message, 0, q.messageHeap.Len())
-	for q.messageHeap.Len() > 0 {
-		message := heap.Pop(&q.messageHeap).(*Message)
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	result := make([]*Message, 0, q.messages.Len())
+	for message := q.messages.popMessage(); message != nil; message = q.messages.popMessage() {
 		result = append(result, message)
 	}
 	if release {
 		q.releaseCopyToChan(result)
 	}
+	q.afterHeapUpdate()
 	return result
 }
 
 func (q *TimeQueue) PopAllUntil(until time.Time, release bool) []*Message {
-	defer q.afterHeapUpdate()
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	result := make([]*Message, 0, q.messageHeap.Len())
-	for q.messageHeap.Len() > 0 {
-		message := q.messageHeap[0]
-		if !message.Before(until) {
-			break
-		}
-		result = append(result, heap.Pop(&q.messageHeap).(*Message))
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return q.popAllUntil(until, release)
+}
+
+func (q *TimeQueue) popAllUntil(until time.Time, release bool) []*Message {
+	result := make([]*Message, 0, q.messages.Len())
+	for message := q.messages.peekMessage(); message != nil && message.Before(until); message = q.messages.peekMessage() {
+		result = append(result, q.messages.popMessage())
 	}
 	if release {
 		q.releaseCopyToChan(result)
 	}
+	q.afterHeapUpdate()
 	return result
 }
 
 func (q *TimeQueue) afterHeapUpdate() {
-	if q.IsRunning() {
+	if q.isRunning() {
 		q.updateAndSpawnWakeSignal()
 	}
 }
@@ -134,13 +129,15 @@ func (q *TimeQueue) Messages() <-chan *Message {
 }
 
 func (q *TimeQueue) Size() int {
-	q.messageLock.Lock()
-	defer q.messageLock.Unlock()
-	return q.messageHeap.Len()
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return q.messages.Len()
 }
 
 func (q *TimeQueue) Start() {
-	if q.IsRunning() {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	if q.isRunning() {
 		return
 	}
 	q.setRunning(true)
@@ -149,31 +146,31 @@ func (q *TimeQueue) Start() {
 }
 
 func (q *TimeQueue) IsRunning() bool {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	return q.isRunning()
+}
+
+func (q *TimeQueue) isRunning() bool {
 	return q.running
 }
 
 func (q *TimeQueue) run() {
-runLoop:
 	for {
 		select {
 		case wakeTime := <-q.wakeChan:
 			q.onWake(wakeTime)
 		case <-q.stopChan:
-			break runLoop
+			return
 		}
 	}
 }
 
 func (q *TimeQueue) onWake(wakeTime time.Time) {
-	q.releaseUntil(wakeTime)
-	q.setWakeSignal(nil)
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	q.popAllUntil(wakeTime, true)
 	q.updateAndSpawnWakeSignal()
-}
-
-func (q *TimeQueue) releaseUntil(until time.Time) {
-	q.PopAllUntil(until, true)
 }
 
 func (q *TimeQueue) releaseMessage(message *Message) {
@@ -201,7 +198,7 @@ func (q *TimeQueue) releaseChan(messages <-chan *Message) {
 
 func (q *TimeQueue) updateAndSpawnWakeSignal() bool {
 	q.killWakeSignal()
-	message := q.PeekMessage()
+	message := q.peekMessage()
 	if message == nil {
 		return false
 	}
@@ -210,14 +207,10 @@ func (q *TimeQueue) updateAndSpawnWakeSignal() bool {
 }
 
 func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
 	q.wakeSignal = wakeSignal
 }
 
 func (q *TimeQueue) spawnWakeSignal() bool {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
 	if q.wakeSignal != nil {
 		q.wakeSignal.spawn()
 		return true
@@ -226,8 +219,6 @@ func (q *TimeQueue) spawnWakeSignal() bool {
 }
 
 func (q *TimeQueue) killWakeSignal() bool {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
 	if q.wakeSignal != nil {
 		q.wakeSignal.kill()
 		q.wakeSignal = nil
@@ -237,7 +228,9 @@ func (q *TimeQueue) killWakeSignal() bool {
 }
 
 func (q *TimeQueue) Stop() {
-	if !q.IsRunning() {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	if !q.isRunning() {
 		return
 	}
 	q.killWakeSignal()
@@ -248,8 +241,6 @@ func (q *TimeQueue) Stop() {
 }
 
 func (q *TimeQueue) setRunning(running bool) {
-	q.stateLock.Lock()
-	defer q.stateLock.Unlock()
 	q.running = running
 }
 
