@@ -6,8 +6,15 @@ import (
 	"time"
 )
 
-//Type Message is a simple holder struct for time.Time (the time the Message
+//Type Message is a simple holder struct for a time.Time (the time the Message
 //will be released from the queue) and a Data payload of type interface.
+//
+//Message is not safe for modification from multiple go-routines.
+//The Time field is used to calculate when the Message should be released from
+//a TimeQueue, and thus changing its value while the Message is still referenced
+//by a TimeQueue could have unknown side-effects.
+//The Data field is never modified by a TimeQueue.
+//
 //It is up to client code to ensure that Data is always of the same underlying
 //type if that is desired.
 type Message struct {
