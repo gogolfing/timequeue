@@ -1,16 +1,11 @@
 package timequeue_test
 
-import (
-	"fmt"
-	"time"
-
-	"github.com/gogolfing/timequeue"
-)
-
+/*
 func Example() {
 	tq := timequeue.New()
 	tq.Start()
-	//this would normally be a long-running process and not stop at the return of a function call.
+	//this would normally be a long-running process,
+	//and not stop at the return of a function call.
 	defer tq.Stop()
 
 	startTime := time.Now()
@@ -23,11 +18,17 @@ func Example() {
 
 	//adding Messages in chronological order.
 	for i := 1; i <= 4; i++ {
-		tq.Push(startTime.Add(time.Duration(i)*time.Second), fmt.Sprintf("message at second %v", i))
+		tq.Push(
+			startTime.Add(time.Duration(i)*time.Second),
+			fmt.Sprintf("message at second %v", i),
+		)
 	}
 	//adding Messages in reverse chronological order.
 	for i := 8; i >= 5; i-- {
-		tq.Push(startTime.Add(time.Duration(i)*time.Second), fmt.Sprintf("message at second %v", i))
+		tq.Push(
+			startTime.Add(time.Duration(i)*time.Second),
+			fmt.Sprintf("message at second %v", i),
+		)
 	}
 
 	//receive all 9 Messages that were pushed.
@@ -58,3 +59,4 @@ func Example() {
 	//there are 0 messages left in the queue
 	//releasing all messages took more than 8 seconds
 }
+*/
