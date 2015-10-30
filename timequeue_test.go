@@ -170,7 +170,7 @@ func TestTimeQueue_PopAll(t *testing.T) {
 		}
 		result := q.PopAll(test.release)
 		sorted := newMessageHeap(cloneMessages(test.messages)...)
-		sort.Sort(sorted)
+		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
 		if !areMessagesEqual(result, sorted.messages) {
 			t.Errorf("q.PopAll() messages sorted = %v WANT %v", result, sorted)
 		}
@@ -183,7 +183,6 @@ func TestTimeQueue_PopAll(t *testing.T) {
 	}
 }
 
-/*
 func TestTimeQueue_PopAllUntil(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
@@ -206,12 +205,12 @@ func TestTimeQueue_PopAllUntil(t *testing.T) {
 		}
 		result := q.PopAllUntil(test.untilTime, test.release)
 		sorted := newMessageHeap(cloneMessages(test.messages)...)
-		sort.Sort(sorted)
-		sorted = sorted[:test.untilCount]
-		if !areMessagesEqual(result, sorted.messages) {
+		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
+		want := sorted.messages[:test.untilCount]
+		if !areMessagesEqual(result, want) {
 			t.Errorf("q.PopAllUntil() messages sorted = %v WANT %v", result, sorted)
 		}
-		if test.release && !areChannelMessagesEqual(q.Messages(), sorted.messages) {
+		if test.release && !areChannelMessagesEqual(q.Messages(), want) {
 			t.Errorf("q.PopAllUntil() Messages() sorted WANT %v", sorted)
 		}
 		if q.messages.Len() != len(test.messages)-test.untilCount {
@@ -222,7 +221,6 @@ func TestTimeQueue_PopAllUntil(t *testing.T) {
 		}
 	}
 }
-*/
 
 func TestTimeQueue_afterHeapUpdate_notRunning(t *testing.T) {
 	q := New()
