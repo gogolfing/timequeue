@@ -39,25 +39,6 @@ func TestTimeQueue_blackbox_startAndStopStress(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_blackbox_millionMessagesDifferentTimes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping for shortness")
-	}
-	const count = 1000000
-	tq := timequeue.NewCapacity(100)
-	tq.Start()
-	defer tq.Stop()
-	for i := 0; i < count; i++ {
-		tq.Push(time.Now(), i)
-	}
-	for i := 0; i < count; i++ {
-		<-tq.Messages()
-	}
-	if size := tq.Size(); size != 0 {
-		t.Errorf("size = %v WANT %v", size, 0)
-	}
-}
-
 func TestTimeQueue_blackbox_millionMessagesSameTime(t *testing.T) {
 	const count = 1000000
 	tq := timequeue.NewCapacity(100)
