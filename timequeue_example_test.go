@@ -65,3 +65,22 @@ func Example() {
 	//there are 0 messages left in the queue
 	//releasing all messages took more than 8 seconds
 }
+
+func ExampleTimeQueue_PopAllUntil() {
+	tq := timequeue.New()
+	now := time.Now()
+	for i := 0; i < 4; i++ {
+		tq.Push(now.Add(time.Duration(i)*time.Second), i)
+	}
+	tq.PopAllUntil(now.Add(time.Duration(2)*time.Second), true)
+	for i := 0; i < 2; i++ {
+		message := <-tq.Messages()
+		fmt.Println(message.Data)
+	}
+	fmt.Println("messages left:", tq.Size())
+
+	//Output:
+	//0
+	//1
+	//messages left: 2
+}

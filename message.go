@@ -22,7 +22,7 @@ type Message struct {
 	Data interface{}
 }
 
-//String returns the standard string representation of the struct.
+//String returns the standard string representation of a struct.
 func (m *Message) String() string {
 	return fmt.Sprintf("&timequeue.Message%v", *m)
 }

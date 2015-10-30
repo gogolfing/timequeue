@@ -9,8 +9,8 @@ import (
 
 func TestNew(t *testing.T) {
 	q := New()
-	if cap(q.messageChan) != DefaultSize {
-		t.Errorf("cap(messageChan) = %v WANT %v", cap(q.messageChan), DefaultSize)
+	if cap(q.messageChan) != DefaultCapacity {
+		t.Errorf("cap(messageChan) = %v WANT %v", cap(q.messageChan), DefaultCapacity)
 	}
 }
 
