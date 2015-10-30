@@ -11,10 +11,10 @@ const (
 )
 
 type TimeQueue struct {
-	messageLock *sync.RWMutex
+	messageLock *sync.Mutex
 	messageHeap messageHeap
 
-	stateLock  *sync.RWMutex
+	stateLock  *sync.Mutex
 	running    bool
 	wakeSignal *wakeSignal
 
@@ -29,9 +29,9 @@ func New() *TimeQueue {
 
 func NewCapacity(capacity int) *TimeQueue {
 	q := &TimeQueue{
-		messageLock: &sync.RWMutex{},
+		messageLock: &sync.Mutex{},
 		messageHeap: messageHeap([]*Message{}),
-		stateLock:   &sync.RWMutex{},
+		stateLock:   &sync.Mutex{},
 		running:     false,
 		wakeSignal:  nil,
 		messageChan: make(chan *Message, capacity),
@@ -68,8 +68,8 @@ func (q *TimeQueue) Peek() (time.Time, interface{}) {
 }
 
 func (q *TimeQueue) PeekMessage() *Message {
-	q.messageLock.RLock()
-	defer q.messageLock.RUnlock()
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
 	if len(q.messageHeap) > 0 {
 		return q.messageHeap[0]
 	}
@@ -134,8 +134,8 @@ func (q *TimeQueue) Messages() <-chan *Message {
 }
 
 func (q *TimeQueue) Size() int {
-	q.messageLock.RLock()
-	defer q.messageLock.RUnlock()
+	q.messageLock.Lock()
+	defer q.messageLock.Unlock()
 	return q.messageHeap.Len()
 }
 
@@ -149,8 +149,8 @@ func (q *TimeQueue) Start() {
 }
 
 func (q *TimeQueue) IsRunning() bool {
-	q.stateLock.RLock()
-	defer q.stateLock.RUnlock()
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
 	return q.running
 }
 
@@ -187,11 +187,11 @@ func (q *TimeQueue) releaseCopyToChan(messages []*Message) {
 	for _, message := range messages {
 		copyChan <- message
 	}
-	q.releasecChan(copyChan)
+	q.releaseChan(copyChan)
 	close(copyChan)
 }
 
-func (q *TimeQueue) releasecChan(messages <-chan *Message) {
+func (q *TimeQueue) releaseChan(messages <-chan *Message) {
 	go func() {
 		for message := range messages {
 			q.messageChan <- message
@@ -216,8 +216,8 @@ func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
 }
 
 func (q *TimeQueue) spawnWakeSignal() bool {
-	q.stateLock.RLock()
-	defer q.stateLock.RUnlock()
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
 	if q.wakeSignal != nil {
 		q.wakeSignal.spawn()
 		return true
@@ -226,10 +226,11 @@ func (q *TimeQueue) spawnWakeSignal() bool {
 }
 
 func (q *TimeQueue) killWakeSignal() bool {
-	q.stateLock.RLock()
-	defer q.stateLock.RUnlock()
+	q.stateLock.Lock()
+	defer q.stateLock.Unlock()
 	if q.wakeSignal != nil {
 		q.wakeSignal.kill()
+		q.wakeSignal = nil
 		return true
 	}
 	return false

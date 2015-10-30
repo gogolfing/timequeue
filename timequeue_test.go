@@ -380,7 +380,7 @@ func TestTimeQueue_releaseChan(t *testing.T) {
 			}
 			close(out)
 		}()
-		q.releasecChan(out)
+		q.releaseChan(out)
 		for _, wantMessage := range test.messages {
 			if message := <-q.Messages(); message != wantMessage {
 				t.Errorf("q.Messages() = %v	WANT %v", message, wantMessage)
