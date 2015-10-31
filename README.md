@@ -32,6 +32,10 @@ separately spawned go-routine.
 Additionally, Messages that are pushed with times before time.Now() will
 immediately be released from the queue.
 
+### Documentation
+Full documentation and examples can be found here:
+[![GoDoc](https://godoc.org/github.com/gogolfing/timequeue?status.svg)](https://godoc.org/github.com/gogolfing/timequeue)
+
 ##Example Usage
 ```go
 package main
@@ -104,9 +108,6 @@ message at second 8
 there are 0 messages left in the queue
 releasing all messages took more than 8 seconds
 ```
-
-### Documentation
-[![GoDoc](https://godoc.org/github.com/gogolfing/timequeue?status.svg)](https://godoc.org/github.com/gogolfing/timequeue)
 
 ### Status
 [![Coverage Status](https://coveralls.io/repos/gogolfing/timequeue/badge.svg?branch=master&service=github)](https://coveralls.io/github/gogolfing/timequeue?branch=master)
