@@ -214,6 +214,9 @@ func (q *TimeQueue) Size() int {
 	return q.messages.Len()
 }
 
+//Start spawns a new go-routine to listen for wake times of Messages and sets the
+//state to running.
+//If q is already running, then Start is a nop.
 func (q *TimeQueue) Start() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -225,16 +228,30 @@ func (q *TimeQueue) Start() {
 	q.updateAndSpawnWakeSignal()
 }
 
+//IsRunning returns whether or not q is running. E.g. in between calls to Start()
+//and Stop().
+//If IsRunning returns true, then it is possible that Messages are being released.
 func (q *TimeQueue) IsRunning() bool {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	return q.isRunning()
 }
 
+//isRunning is the unexported version of IsRunning.
+//It should only be called when q is locked.
 func (q *TimeQueue) isRunning() bool {
 	return q.running
 }
 
+//run is the run loop of a TimeQueue.
+//It is an infinite loop that selects between q.wakeChan and q.stopChan.
+//If q.wakeChan is selected, then q.onWake() is called.
+//If q.wakeStop is selected, then this method returns.
+//Note that this method does not spawn a new go-routine.
+//That should be done outside of run.
+//run does not have the precondition that q must be locked.
+//This is a function that should execute in its own go-routine and thus cannot
+//lock any other parts of q.
 func (q *TimeQueue) run() {
 	for {
 		select {
@@ -246,6 +263,10 @@ func (q *TimeQueue) run() {
 	}
 }
 
+//onWake should be called when q receives a value on q.wakeChan.
+//Because onWake will be called from a go-routine that we spawned, we lock and
+//defer unlock on q since this acts like an exported method of sorts in that
+//it starts execution of unexported code from an outside go-routine.
 func (q *TimeQueue) onWake(wakeTime time.Time) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -253,12 +274,16 @@ func (q *TimeQueue) onWake(wakeTime time.Time) {
 	q.updateAndSpawnWakeSignal()
 }
 
+//releaseMessage is a utility method that spawns a go-routine to send message on
+//q.messageChan so that that calling go-routine does not have to wait.
 func (q *TimeQueue) releaseMessage(message *Message) {
 	go func() {
 		q.messageChan <- message
 	}()
 }
 
+//releaseCopyToChan is a utility method that copies messages to a new, buffered
+//channel, and empties that new channel by sending every messsage on q.messageChan.
 func (q *TimeQueue) releaseCopyToChan(messages []*Message) {
 	copyChan := make(chan *Message, len(messages))
 	for _, message := range messages {
@@ -268,6 +293,10 @@ func (q *TimeQueue) releaseCopyToChan(messages []*Message) {
 	close(copyChan)
 }
 
+//releaseChan is a utility method that spawns a go-routine to send every message
+//in messages on q.messageChan.
+//Note that releaseChan reads from messages until it is closed, thus messages must
+//be closed by the calling function.
 func (q *TimeQueue) releaseChan(messages <-chan *Message) {
 	go func() {
 		for message := range messages {
@@ -276,6 +305,10 @@ func (q *TimeQueue) releaseChan(messages <-chan *Message) {
 	}()
 }
 
+//updateAndSpawnSignal kills the current wake signal if it exists
+//and creates and spawns the next wake signal if there are any messages left in q.
+//Returns true if a new wakeSignal was spawned, false otherwise.
+//It should only be called when q is locked.
 func (q *TimeQueue) updateAndSpawnWakeSignal() bool {
 	q.killWakeSignal()
 	message := q.peekMessage()
@@ -286,10 +319,15 @@ func (q *TimeQueue) updateAndSpawnWakeSignal() bool {
 	return q.spawnWakeSignal()
 }
 
+//setWakeSignal sets q.wakeSignal to wakeSignal.
+//It should only be called when q is locked.
 func (q *TimeQueue) setWakeSignal(wakeSignal *wakeSignal) {
 	q.wakeSignal = wakeSignal
 }
 
+//spawnWakeSignal calls spawn() on q.wakeSignal if it is not nil.
+//Returns true if spawn was called, false otherwise.
+//It should only be called when q is locked.
 func (q *TimeQueue) spawnWakeSignal() bool {
 	if q.wakeSignal != nil {
 		q.wakeSignal.spawn()
@@ -298,6 +336,9 @@ func (q *TimeQueue) spawnWakeSignal() bool {
 	return false
 }
 
+//killWakeSignal call kill() and sets q.wakeSignal to nil if it is not nil.
+//Returns true if the old wakeSignal is not nil, false otherwise.
+//It should only be called when q is locked.
 func (q *TimeQueue) killWakeSignal() bool {
 	if q.wakeSignal != nil {
 		q.wakeSignal.kill()
@@ -307,6 +348,9 @@ func (q *TimeQueue) killWakeSignal() bool {
 	return false
 }
 
+//Stop tells the running go-routine to stop running.
+//This results in no Messages being released and the state to be set to not running.
+//If q is already stopped, then Stop is a nop.
 func (q *TimeQueue) Stop() {
 	q.lock.Lock()
 	defer q.lock.Unlock()
@@ -320,16 +364,23 @@ func (q *TimeQueue) Stop() {
 	}()
 }
 
+//setRunning is the unexported version of SetRunning. Sets q.running to running.
+//It should only be called when q is locked.
 func (q *TimeQueue) setRunning(running bool) {
 	q.running = running
 }
 
+//wakeSignal represents a signal that sends a time.Time value after that time has passed.
+//wakeSignals can be killed, which will prevent the signal from sending its value.
 type wakeSignal struct {
 	dst  chan time.Time
 	src  <-chan time.Time
 	stop chan struct{}
 }
 
+//newWakeSignal create a wakeSignal that sends wakeTime on dst when wakeTime passes.
+//this function should be used to create wakeSignals.
+//the zero value wakeSignal is not valid.
 func newWakeSignal(dst chan time.Time, wakeTime time.Time) *wakeSignal {
 	return &wakeSignal{
 		dst:  dst,
@@ -338,6 +389,10 @@ func newWakeSignal(dst chan time.Time, wakeTime time.Time) *wakeSignal {
 	}
 }
 
+//spawn starts a new go-routine that selects on w.src and w.stop.
+//If w.src is selected, the received value is sent on w.dst.
+//If w.stop is selected, then the function stops selecting.
+//In both cases, w.src is set to nil and the function returns.
 func (w *wakeSignal) spawn() {
 	go func() {
 		select {
@@ -349,6 +404,8 @@ func (w *wakeSignal) spawn() {
 	}()
 }
 
+//kill closes the w.stop channel.
+//This is NOT idempotent. I.e. kill should only be called once a single wakeSignal.
 func (w *wakeSignal) kill() {
 	close(w.stop)
 }
