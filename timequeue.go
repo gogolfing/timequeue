@@ -349,7 +349,8 @@ func (q *TimeQueue) killWakeSignal() bool {
 }
 
 //Stop tells the running go-routine to stop running.
-//This results in no Messages being released and the state to be set to not running.
+//This results in no more Messages being released (until a subsequent call to Start())
+//and the state to be set to not running.
 //If q is already stopped, then Stop is a nop.
 func (q *TimeQueue) Stop() {
 	q.lock.Lock()
