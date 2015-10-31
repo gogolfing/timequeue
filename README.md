@@ -109,6 +109,6 @@ there are 0 messages left in the queue
 releasing all messages took more than 8 seconds
 ```
 
-### Status
+## Status
 [![Coverage Status](https://coveralls.io/repos/gogolfing/timequeue/badge.svg?branch=master&service=github)](https://coveralls.io/github/gogolfing/timequeue?branch=master)
 [![Build Status](https://travis-ci.org/gogolfing/timequeue.svg)](https://travis-ci.org/gogolfing/timequeue)
