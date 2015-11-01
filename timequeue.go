@@ -18,7 +18,7 @@ const (
 //is "released" from the TimeQueue by being sent on the channel returned by
 //Messages().
 //
-//Messages may be pushed an popped from a TimeQueue whether or not the TimeQueue
+//Messages may be pushed and popped from a TimeQueue whether or not the TimeQueue
 //is running or not. Start() and Stop() may be called as many times as desired,
 //but Messsages will be released only between calls to Start() and Stop(), i.e.
 //while the TimeQueue is running and IsRunning() returns true.
