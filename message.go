@@ -47,12 +47,9 @@ type messageHeap struct {
 
 //newMessageHeap creates a messageHeap with messages added to the heap.
 //heap.Init() is called before the value is returned.
-func newMessageHeap(messages ...*Message) *messageHeap {
-	if messages == nil {
-		messages = []*Message{}
-	}
+func newMessageHeap() *messageHeap {
 	mh := &messageHeap{
-		messages: messages,
+		messages: []*Message{},
 	}
 	heap.Init(mh)
 	return mh
@@ -75,6 +72,20 @@ func (mh *messageHeap) Swap(i, j int) {
 	mh.messages[i], mh.messages[j] = mh.messages[j], mh.messages[i]
 	mh.messages[i].index = i
 	mh.messages[j].index = j
+}
+
+//Push is the heap.Interface Push method that adds value to the heap.
+//Appends value to the internal slice.
+func (mh *messageHeap) Push(value interface{}) {
+	mh.messages = append(mh.messages, value.(*Message))
+}
+
+//Pop is the heap.Interface Pop method that removes the "smallest" Message from the heap.
+func (mh *messageHeap) Pop() interface{} {
+	n := len(mh.messages)
+	result := (mh.messages)[n-1]
+	mh.messages = (mh.messages)[0 : n-1]
+	return result
 }
 
 //peekMessage returns the "smallest" Message in the heap (without removal) or
@@ -100,12 +111,6 @@ func (mh *messageHeap) pushMessageValues(t time.Time, data interface{}) *Message
 	return message
 }
 
-//Push is the heap.Interface Push method that adds value to the heap.
-//Appends value to the internal slice.
-func (mh *messageHeap) Push(value interface{}) {
-	mh.messages = append(mh.messages, value.(*Message))
-}
-
 //popMessage returns the "smallest" Message in the heap (after removal) or nil
 //if the heap is empty.
 func (mh *messageHeap) popMessage() *Message {
@@ -114,14 +119,6 @@ func (mh *messageHeap) popMessage() *Message {
 	}
 	result := heap.Pop(mh).(*Message)
 	beforeRemoval(result)
-	return result
-}
-
-//Pop is the heap.Interface Pop method that removes the "smallest" Message from the heap.
-func (mh *messageHeap) Pop() interface{} {
-	n := len(mh.messages)
-	result := (mh.messages)[n-1]
-	mh.messages = (mh.messages)[0 : n-1]
 	return result
 }
 
