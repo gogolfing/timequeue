@@ -78,7 +78,9 @@ func NewCapacity(capacity int) *TimeQueue {
 func (q *TimeQueue) Push(t time.Time, data interface{}) *Message {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	return q.messages.pushMessageValues(t, data)
+	message := q.messages.pushMessageValues(t, data)
+	q.afterHeapUpdate()
+	return message
 }
 
 //Peek returns (without removing) the Time and Data fields from the earliest
