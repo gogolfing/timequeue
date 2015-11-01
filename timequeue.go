@@ -165,8 +165,16 @@ func (q *TimeQueue) popAllUntil(until time.Time, release bool) []*Message {
 	return result
 }
 
+//Remove removes message from q.
+//If q is empty, message is nil, or message is not in q, then Remove is a nop
+//and returns false.
+//Returns true or false indicating whether or not message was actually removed from q.
 func (q *TimeQueue) Remove(message *Message) bool {
-	return q.messages.removeMessage(message)
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	result := q.messages.removeMessage(message)
+	q.afterHeapUpdate()
+	return result
 }
 
 //afterHeapUpdate ensures the earliest time is in the next wake signal, if q is running.
