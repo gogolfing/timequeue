@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+//sentinel value that says a Message is not in a messageHeap.
+const notInIndex = -1
+
 //Type Message is a simple holder struct for a time.Time (the time the Message
 //will be released from the queue) and a Data payload of type interface{}.
 //
@@ -20,28 +23,33 @@ import (
 type Message struct {
 	time.Time
 	Data interface{}
+
+	//reference to the messageHeap that this Message is in. used for removal safety.
+	mh *messageHeap
+	//the index of this Message in mh. used to remove a Message from a messageHeap.
+	index int
 }
 
 //String returns the standard string representation of a struct.
 func (m *Message) String() string {
-	return fmt.Sprintf("&timequeue.Message%v", *m)
+	return fmt.Sprintf("&timequeue.Message{%v %v}", m.Time, m.Data)
 }
 
 //messageHeap is a heap.Interface implementation for Messages.
-//The peekMessage(), pushMessage(), and popMessage() methods are prefered over
-//Push() and Pop() because they provide logic for emprty heaps and nil Messages.
+//The peekMessage(), pushMessage(), popMessage(), and removeMessage() methods
+//should be used over Push() and Pop() because they provide logic for emprty heaps,
+//nil Messages, and removal.
+//A messageHeap has no guarantees for correctness if they are not used.
+//messageHeap is not safe for use by multiple go-routines.
 type messageHeap struct {
 	messages []*Message
 }
 
-//newMessageHeap create a pointer to messageHeap with messages added to the heap.
+//newMessageHeap creates a messageHeap with messages added to the heap.
 //heap.Init() is called before the value is returned.
-func newMessageHeap(messages ...*Message) *messageHeap {
-	if messages == nil {
-		messages = []*Message{}
-	}
+func newMessageHeap() *messageHeap {
 	mh := &messageHeap{
-		messages: messages,
+		messages: []*Message{},
 	}
 	heap.Init(mh)
 	return mh
@@ -62,6 +70,22 @@ func (mh *messageHeap) Less(i, j int) bool {
 //Swap swaps the messages at indices i and j.
 func (mh *messageHeap) Swap(i, j int) {
 	mh.messages[i], mh.messages[j] = mh.messages[j], mh.messages[i]
+	mh.messages[i].index = i
+	mh.messages[j].index = j
+}
+
+//Push is the heap.Interface Push method that adds value to the heap.
+//Appends value to the internal slice.
+func (mh *messageHeap) Push(value interface{}) {
+	mh.messages = append(mh.messages, value.(*Message))
+}
+
+//Pop is the heap.Interface Pop method that removes the "smallest" Message from the heap.
+func (mh *messageHeap) Pop() interface{} {
+	n := len(mh.messages)
+	result := (mh.messages)[n-1]
+	mh.messages = (mh.messages)[0 : n-1]
+	return result
 }
 
 //peekMessage returns the "smallest" Message in the heap (without removal) or
@@ -73,19 +97,18 @@ func (mh *messageHeap) peekMessage() *Message {
 	return nil
 }
 
-//pushMessage adds the Message to the heap at the approriate location in the heap.
-//If message is nil, then pushMessage is a nop.
-func (mh *messageHeap) pushMessage(message *Message) {
-	if message == nil {
-		return
+//pushMessageValues creates and adds a Message with values t and data in the
+//appropriate index to mh.
+//The created message is returned.
+func (mh *messageHeap) pushMessageValues(t time.Time, data interface{}) *Message {
+	message := &Message{
+		Time:  t,
+		Data:  data,
+		index: mh.Len(),
+		mh:    mh,
 	}
 	heap.Push(mh, message)
-}
-
-//Push is the heap.Interface Push method that adds value to the heap.
-//Appends value to the internal slice.
-func (mh *messageHeap) Push(value interface{}) {
-	mh.messages = append(mh.messages, value.(*Message))
+	return message
 }
 
 //popMessage returns the "smallest" Message in the heap (after removal) or nil
@@ -94,13 +117,28 @@ func (mh *messageHeap) popMessage() *Message {
 	if mh.Len() == 0 {
 		return nil
 	}
-	return heap.Pop(mh).(*Message)
+	result := heap.Pop(mh).(*Message)
+	beforeRemoval(result)
+	return result
 }
 
-//Pop is the heap.Interface Pop method that removes the "smallest" Message from the heap.
-func (mh *messageHeap) Pop() interface{} {
-	n := len(mh.messages)
-	result := (mh.messages)[n-1]
-	mh.messages = (mh.messages)[0 : n-1]
-	return result
+//removeMessage removes the message from mh.
+//If mh is empty, message is nil, or message is not in mh, then this is a nop
+//and returns false.
+//Returns true or false indicating whether or not message was actually removed
+//from mh.
+func (mh *messageHeap) removeMessage(message *Message) bool {
+	if mh.Len() == 0 || message == nil || message.index == notInIndex || message.mh != mh {
+		return false
+	}
+	result := heap.Remove(mh, message.index).(*Message)
+	beforeRemoval(result)
+	return true
+}
+
+//beforeRemoval sets the index and mh fields of message to indicate that it is
+//no longer in a messageHeap.
+func beforeRemoval(message *Message) {
+	message.index = notInIndex
+	message.mh = nil
 }

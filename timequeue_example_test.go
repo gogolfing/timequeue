@@ -16,11 +16,7 @@ func Example() {
 
 	startTime := time.Now()
 
-	immediate := &timequeue.Message{
-		Time: startTime,
-		Data: "this will be released immediately",
-	}
-	tq.PushMessage(immediate)
+	tq.Push(startTime, "this will be released immediately")
 
 	//adding Messages in chronological order.
 	for i := 1; i <= 4; i++ {

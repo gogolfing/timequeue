@@ -74,22 +74,13 @@ func NewCapacity(capacity int) *TimeQueue {
 	}
 }
 
-//Push creates and adds a Message to q with time and data. The created Message is returned.
-func (q *TimeQueue) Push(time time.Time, data interface{}) *Message {
-	message := &Message{
-		Time: time,
-		Data: data,
-	}
-	q.PushMessage(message)
-	return message
-}
-
-//PushMessage adds message to q.
-func (q *TimeQueue) PushMessage(message *Message) {
+//Push creates and adds a Message to q with t and data. The created Message is returned.
+func (q *TimeQueue) Push(t time.Time, data interface{}) *Message {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	q.messages.pushMessage(message)
+	message := q.messages.pushMessageValues(t, data)
 	q.afterHeapUpdate()
+	return message
 }
 
 //Peek returns (without removing) the Time and Data fields from the earliest
@@ -174,6 +165,23 @@ func (q *TimeQueue) popAllUntil(until time.Time, release bool) []*Message {
 	}
 	q.afterHeapUpdate()
 	return result
+}
+
+//Remove removes message from q.
+//If q is empty, message is nil, or message is not in q, then Remove is a nop
+//and returns false.
+//Returns true or false indicating whether or not message was actually removed from q.
+//If release is true and message was actually removed, then message will also be
+//sent on the channel returned by Messages().
+func (q *TimeQueue) Remove(message *Message, release bool) bool {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	removed := q.messages.removeMessage(message)
+	if removed && release {
+		q.releaseMessage(message)
+	}
+	q.afterHeapUpdate()
+	return removed
 }
 
 //afterHeapUpdate ensures the earliest time is in the next wake signal, if q is running.
