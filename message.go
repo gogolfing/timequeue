@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const notInIndex = -1
+
 //Type Message is a simple holder struct for a time.Time (the time the Message
 //will be released from the queue) and a Data payload of type interface{}.
 //
@@ -19,17 +21,20 @@ import (
 //type if that is desired.
 type Message struct {
 	time.Time
-	Data interface{}
+	Data  interface{}
+	mh    *messageHeap
+	index int
 }
 
 //String returns the standard string representation of a struct.
 func (m *Message) String() string {
-	return fmt.Sprintf("&timequeue.Message%v", *m)
+	return fmt.Sprintf("&timequeue.Message{%v %v}", m.Time, m.Data)
 }
 
 //messageHeap is a heap.Interface implementation for Messages.
 //The peekMessage(), pushMessage(), and popMessage() methods are prefered over
 //Push() and Pop() because they provide logic for emprty heaps and nil Messages.
+//messageHeap is not safe for use by multiple go-routines.
 type messageHeap struct {
 	messages []*Message
 }
@@ -62,6 +67,8 @@ func (mh *messageHeap) Less(i, j int) bool {
 //Swap swaps the messages at indices i and j.
 func (mh *messageHeap) Swap(i, j int) {
 	mh.messages[i], mh.messages[j] = mh.messages[j], mh.messages[i]
+	mh.messages[i].index = i
+	mh.messages[j].index = j
 }
 
 //peekMessage returns the "smallest" Message in the heap (without removal) or
@@ -73,13 +80,15 @@ func (mh *messageHeap) peekMessage() *Message {
 	return nil
 }
 
-//pushMessage adds the Message to the heap at the approriate location in the heap.
-//If message is nil, then pushMessage is a nop.
-func (mh *messageHeap) pushMessage(message *Message) {
-	if message == nil {
-		return
+func (mh *messageHeap) pushMessageValues(t time.Time, data interface{}) *Message {
+	message := &Message{
+		Time:  t,
+		Data:  data,
+		index: mh.Len(),
+		mh:    mh,
 	}
 	heap.Push(mh, message)
+	return message
 }
 
 //Push is the heap.Interface Push method that adds value to the heap.
@@ -94,7 +103,9 @@ func (mh *messageHeap) popMessage() *Message {
 	if mh.Len() == 0 {
 		return nil
 	}
-	return heap.Pop(mh).(*Message)
+	result := heap.Pop(mh).(*Message)
+	beforeRemoval(result)
+	return result
 }
 
 //Pop is the heap.Interface Pop method that removes the "smallest" Message from the heap.
@@ -103,4 +114,18 @@ func (mh *messageHeap) Pop() interface{} {
 	result := (mh.messages)[n-1]
 	mh.messages = (mh.messages)[0 : n-1]
 	return result
+}
+
+func (mh *messageHeap) removeMessage(message *Message) bool {
+	if mh.Len() == 0 || message == nil || message.index == notInIndex || message.mh != mh {
+		return false
+	}
+	result := heap.Remove(mh, message.index).(*Message)
+	beforeRemoval(result)
+	return true
+}
+
+func beforeRemoval(message *Message) {
+	message.index = notInIndex
+	message.mh = nil
 }

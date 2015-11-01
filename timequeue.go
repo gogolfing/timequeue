@@ -74,22 +74,11 @@ func NewCapacity(capacity int) *TimeQueue {
 	}
 }
 
-//Push creates and adds a Message to q with time and data. The created Message is returned.
-func (q *TimeQueue) Push(time time.Time, data interface{}) *Message {
-	message := &Message{
-		Time: time,
-		Data: data,
-	}
-	q.PushMessage(message)
-	return message
-}
-
-//PushMessage adds message to q.
-func (q *TimeQueue) PushMessage(message *Message) {
+//Push creates and adds a Message to q with t and data. The created Message is returned.
+func (q *TimeQueue) Push(t time.Time, data interface{}) *Message {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	q.messages.pushMessage(message)
-	q.afterHeapUpdate()
+	return q.messages.pushMessageValues(t, data)
 }
 
 //Peek returns (without removing) the Time and Data fields from the earliest
@@ -174,6 +163,10 @@ func (q *TimeQueue) popAllUntil(until time.Time, release bool) []*Message {
 	}
 	q.afterHeapUpdate()
 	return result
+}
+
+func (q *TimeQueue) Remove(message *Message) bool {
+	return q.messages.removeMessage(message)
 }
 
 //afterHeapUpdate ensures the earliest time is in the next wake signal, if q is running.
