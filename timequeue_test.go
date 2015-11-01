@@ -57,31 +57,6 @@ func TestTimeQueue_Push(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_PushMessage_nil(t *testing.T) {
-	q := New()
-	q.PushMessage(nil)
-	size := q.messages.Len()
-	if size != 0 {
-		t.Errorf("q.messages.Len() = %v WANT %v", size, 0)
-	}
-}
-
-func TestTimeQueue_PushMessage_nonNil(t *testing.T) {
-	q := New()
-	message := &Message{
-		Time: time.Time{},
-		Data: "test_data",
-	}
-	q.PushMessage(message)
-	size := q.messages.Len()
-	if size != 1 {
-		t.Errorf("q.messages.Len() = %v WANT %v", size, 1)
-	}
-	if peek := q.messages.peekMessage(); peek != message {
-		t.Errorf("q.messages[0] = %v WANT %v", peek, message)
-	}
-}
-
 func TestTimeQueue_Peek_nil(t *testing.T) {
 	q := New()
 	peekTime, data := q.Peek()
