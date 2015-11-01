@@ -2,6 +2,7 @@ package timequeue
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 )
@@ -124,33 +125,33 @@ func TestTimeQueue_Pop_nonEmptyNonRelease(t *testing.T) {
 	}
 }
 
-/*
 func TestTimeQueue_PopAll(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
-		messages []*testmv
-		release  bool
+		messageValues []*testMessageValue
+		release       bool
 	}{
-		{[]*Message{}, false},
-		{[]*Message{}, true},
-		{[]*Message{{now, 0}}, false},
-		{[]*Message{{now, 0}}, true},
-		{[]*Message{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true},
-		{[]*Message{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true},
+		{[]*testMessageValue{}, false},
+		{[]*testMessageValue{}, true},
+		{[]*testMessageValue{{now, 0}}, false},
+		{[]*testMessageValue{{now, 0}}, true},
+		{[]*testMessageValue{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true},
+		{[]*testMessageValue{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true},
 	}
 	for _, test := range tests {
 		q := New()
-		for _, message := range test.messages {
-			q.PushMessage(message)
+		want := []*Message{}
+		for _, mv := range test.messageValues {
+			message := q.Push(mv.Time, mv.Data)
+			want = append(want, message)
 		}
+		sort.Sort(&messageHeap{want})
 		result := q.PopAll(test.release)
-		sorted := newMessageHeap(cloneMessages(test.messages)...)
-		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
-		if !areMessagesEqual(result, sorted.messages) {
-			t.Errorf("q.PopAll() messages sorted = %v WANT %v", result, sorted)
+		if !areMessagesEqual(result, want) {
+			t.Errorf("q.PopAll() messages sorted = %v WANT %v", result, want)
 		}
-		if test.release && !areChannelMessagesEqual(q.Messages(), sorted.messages) {
-			t.Errorf("q.PopAll() Messages() sorted WANT %v", sorted)
+		if test.release && !areChannelMessagesEqual(q.Messages(), want) {
+			t.Errorf("q.PopAll() Messages() sorted WANT %v", want)
 		}
 		if len(q.Messages()) != 0 {
 			t.Errorf("len(q.Messages() = %v WANT %v", len(q.Messages()), 0)
@@ -161,42 +162,88 @@ func TestTimeQueue_PopAll(t *testing.T) {
 func TestTimeQueue_PopAllUntil(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
-		messages   []*Message
-		release    bool
-		untilTime  time.Time
-		untilCount int
+		messageValues []*testMessageValue
+		release       bool
+		untilTime     time.Time
+		untilCount    int
 	}{
-		{[]*Message{}, false, now.Add(10), 0},
-		{[]*Message{}, true, now.Add(-10), 0},
-		{[]*Message{{now, 0}}, true, now, 0},
-		{[]*Message{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true, now.Add(2), 2},
-		{[]*Message{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 3},
-		{[]*Message{{now.Add(4), 4}, {now.Add(-1), -1}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 4},
+		{[]*testMessageValue{}, false, now.Add(10), 0},
+		{[]*testMessageValue{}, true, now.Add(-10), 0},
+		{[]*testMessageValue{{now, 0}}, true, now, 0},
+		{[]*testMessageValue{{now, 0}, {now.Add(1), 1}, {now.Add(2), 2}}, true, now.Add(2), 2},
+		{[]*testMessageValue{{now.Add(4), 4}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 3},
+		{[]*testMessageValue{{now.Add(4), 4}, {now.Add(-1), -1}, {now.Add(2), 2}, {now.Add(1), 1}, {now, 0}}, true, now.Add(3), 4},
 	}
 	for _, test := range tests {
 		q := New()
-		for _, message := range test.messages {
-			q.PushMessage(message)
+		want := []*Message{}
+		for _, mv := range test.messageValues {
+			message := q.Push(mv.Time, mv.Data)
+			want = append(want, message)
 		}
+		sort.Sort(&messageHeap{want})
+		want = want[:test.untilCount]
 		result := q.PopAllUntil(test.untilTime, test.release)
-		sorted := newMessageHeap(cloneMessages(test.messages)...)
-		sort.Sort(sorted) //this leaves sorted in a non-valid heap state, but it is only for testing comparisons.
-		want := sorted.messages[:test.untilCount]
 		if !areMessagesEqual(result, want) {
-			t.Errorf("q.PopAllUntil() messages sorted = %v WANT %v", result, sorted)
+			t.Errorf("q.PopAllUntil() messages sorted = %v WANT %v", result, want)
 		}
 		if test.release && !areChannelMessagesEqual(q.Messages(), want) {
-			t.Errorf("q.PopAllUntil() Messages() sorted WANT %v", sorted)
+			t.Errorf("q.PopAllUntil() Messages() sorted WANT %v", want)
 		}
-		if q.messages.Len() != len(test.messages)-test.untilCount {
-			t.Errorf("len(q.messages) = %v WANT %v", q.messages.Len(), len(test.messages)-test.untilCount)
+		if q.messages.Len() != len(test.messageValues)-test.untilCount {
+			t.Errorf("len(q.messages) = %v WANT %v", q.messages.Len(), len(test.messageValues)-test.untilCount)
 		}
 		if len(q.Messages()) != 0 {
 			t.Errorf("len(q.Messages()) = %v WANT %v", len(q.Messages()), 0)
 		}
 	}
 }
-*/
+
+func TestTimeQueue_Remove_empty(t *testing.T) {
+	q := New()
+	if result := q.Remove(nil, true); result {
+		t.Errorf("q.Remove() = %v WANT %v", result, false)
+	}
+	if size := len(q.Messages()); size != 0 {
+		t.Errorf("len(q.Messages()) = %v WANT %v", size, 0)
+	}
+}
+
+func TestTimeQueue_Remove_nonEmpty(t *testing.T) {
+	tests := []struct {
+		release bool
+	}{
+		{true},
+		{false},
+	}
+	for _, test := range tests {
+		q := New()
+		want := q.Push(time.Now(), nil)
+		if result := q.Remove(want, test.release); !result {
+			t.Errorf("q.Remove() = %v WANT %v", result, true)
+		}
+		if test.release {
+			if actual := <-q.Messages(); actual != want {
+				t.Errorf("<-q.Messages() = %v WANT %v", actual, want)
+			}
+		}
+		if size := q.Size(); size != 0 {
+			t.Errorf("t.Size() = %v WANT %v", size, 0)
+		}
+		if size := len(q.Messages()); size != 0 {
+			t.Errorf("len(q.Messages()) = %v WANT %v", size, 0)
+		}
+	}
+}
+
+func TestTimeQueue_Remove_notIn(t *testing.T) {
+	q := New()
+	q.Push(time.Now(), nil)
+	other := New().Push(time.Now(), nil)
+	if result := q.Remove(other, true); result {
+		t.Errorf("q.Remove(other) = %v WANT %v", result, false)
+	}
+}
 
 func TestTimeQueue_afterHeapUpdate_notRunning(t *testing.T) {
 	q := New()
@@ -533,20 +580,9 @@ func TestWakeSignal_kill(t *testing.T) {
 	ws.kill()
 }
 
-type testmv struct {
+type testMessageValue struct {
 	time.Time
 	Data interface{}
-}
-
-func cloneMessages(messages []*Message) []*Message {
-	if messages == nil {
-		return nil
-	}
-	result := make([]*Message, 0, len(messages))
-	for _, message := range messages {
-		result = append(result, message)
-	}
-	return result
 }
 
 func areChannelMessagesEqual(actualChan <-chan *Message, want []*Message) bool {
@@ -558,13 +594,5 @@ func areChannelMessagesEqual(actualChan <-chan *Message, want []*Message) bool {
 }
 
 func areMessagesEqual(actual, want []*Message) bool {
-	//if actual == nil && want == nil {
-	//	return true
-	//}
-	//if len(actual) != len(want) {
-	//	return false
-	//}
-	//for i, am := range actual {
-	//}
 	return (len(actual) == 0 && len(want) == 0) || reflect.DeepEqual(actual, want)
 }
