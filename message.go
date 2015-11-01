@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+//sentinel value that says a Message is not in a messageHeap.
 const notInIndex = -1
 
 //Type Message is a simple holder struct for a time.Time (the time the Message
@@ -21,8 +22,11 @@ const notInIndex = -1
 //type if that is desired.
 type Message struct {
 	time.Time
-	Data  interface{}
-	mh    *messageHeap
+	Data interface{}
+
+	//reference to the messageHeap that this Message is in. used for removal safety.
+	mh *messageHeap
+	//the index of this Message in mh. used to remove a Message from a messageHeap.
 	index int
 }
 
@@ -32,14 +36,16 @@ func (m *Message) String() string {
 }
 
 //messageHeap is a heap.Interface implementation for Messages.
-//The peekMessage(), pushMessage(), and popMessage() methods are prefered over
-//Push() and Pop() because they provide logic for emprty heaps and nil Messages.
+//The peekMessage(), pushMessage(), popMessage(), and removeMessage() methods
+//should be used over Push() and Pop() because they provide logic for emprty heaps,
+//nil Messages, and removal.
+//A messageHeap has no guarantees for correctness if they are not used.
 //messageHeap is not safe for use by multiple go-routines.
 type messageHeap struct {
 	messages []*Message
 }
 
-//newMessageHeap create a pointer to messageHeap with messages added to the heap.
+//newMessageHeap creates a messageHeap with messages added to the heap.
 //heap.Init() is called before the value is returned.
 func newMessageHeap(messages ...*Message) *messageHeap {
 	if messages == nil {
@@ -80,6 +86,9 @@ func (mh *messageHeap) peekMessage() *Message {
 	return nil
 }
 
+//pushMessageValues creates and adds a Message with values t and data in the
+//appropriate index to mh.
+//The created message is returned.
 func (mh *messageHeap) pushMessageValues(t time.Time, data interface{}) *Message {
 	message := &Message{
 		Time:  t,
@@ -116,6 +125,11 @@ func (mh *messageHeap) Pop() interface{} {
 	return result
 }
 
+//removeMessage removes the message from mh.
+//If mh is empty, message is nil, or message is not in mh, then this is a nop
+//and returns false.
+//Returns true or false indicating whether or not message was actually removed
+//from mh.
 func (mh *messageHeap) removeMessage(message *Message) bool {
 	if mh.Len() == 0 || message == nil || message.index == notInIndex || message.mh != mh {
 		return false
@@ -125,6 +139,8 @@ func (mh *messageHeap) removeMessage(message *Message) bool {
 	return true
 }
 
+//beforeRemoval sets the index and mh fields of message to indicate that it is
+//no longer in a messageHeap.
 func beforeRemoval(message *Message) {
 	message.index = notInIndex
 	message.mh = nil
