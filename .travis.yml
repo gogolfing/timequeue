@@ -11,13 +11,10 @@ notifications:
     on_failure: change
 
 install:
-  - go get github.com/axw/gocov/gocov
-  - go get github.com/mattn/goveralls
-  - go get -t ./...
+  - ./bin/travis/install.sh
 
 script:
-  - ./.travis.test.sh
+  - ./bin/travis/test_coverage.sh
 
 after_success:
-  - gocov convert *.cov > profile.cov.json
-  - goveralls -gocovdata profile.cov.json -repotoken $COVERALLS_TOKEN -service travis-ci
+  - ./bin/coveralls/push.sh
