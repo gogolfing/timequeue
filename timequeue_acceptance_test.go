@@ -7,7 +7,7 @@ import (
 	"github.com/gogolfing/timequeue"
 )
 
-func TestTimeQueue_blackbox_messageAddedBeforeStart(t *testing.T) {
+func TestTimeQueue_acceptance_messageAddedBeforeStart(t *testing.T) {
 	tq := timequeue.New()
 	tq.Push(time.Now(), "now")
 	tq.Start()
@@ -17,7 +17,7 @@ func TestTimeQueue_blackbox_messageAddedBeforeStart(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_blackbox_startAndStopStress(t *testing.T) {
+func TestTimeQueue_acceptance_startAndStopStress(t *testing.T) {
 	const count = 100000
 	tq := timequeue.NewCapacity(100)
 	tq.Start()
@@ -39,7 +39,7 @@ func TestTimeQueue_blackbox_startAndStopStress(t *testing.T) {
 	}
 }
 
-func TestTimeQueue_blackbox_millionMessagesSameTime(t *testing.T) {
+func TestTimeQueue_acceptance_millionMessagesSameTime(t *testing.T) {
 	const count = 1000000
 	tq := timequeue.NewCapacity(100)
 	tq.Start()
