@@ -1,3 +1,35 @@
+//Package timequeue provides the TimeQueue type that is a queue of Messages.
+//Each Message contains a time.Time that determines the time at which the Message
+//should be released from the queue.
+//Message types also have a Data field of type interface{} that should be used
+//as the payload of the Message.
+//TimeQueue is safe for use by multiple go-routines.
+//
+//Messages need only be pushed to the queue, and then when their time passes,
+//they will be sent on the channel returned by Messages().
+//See below for examples.
+//
+//TimeQueue uses a single go-routine, spawned from Start() that returns from Stop(),
+//that processes the Messages as their times pass.
+//When a Message is pushed to the queue, the earliest Message in the queue is
+//used to determine the next time the running go-routine should wake.
+//The running go-routine knows when to wake because the earliest time is used
+//to make a channel via time.After(). Receiving on that channel wakes the
+//running go-routine if a call to Stop() has not happened prior.
+//Upon waking, that Message is removed from the queue and released on the channel
+//returned from Messages().
+//Then the newest remaining Message is used to determine when to wake, etc.
+//If a Message with a time before any other in the queue is inserted, then that
+//Message is pushed to the front of the queue and released appropriately.
+//
+//Messages that are "released", i.e. sent on the Messages() channel, are always
+//released from a newly spawned go-routine so that other go-routines are not
+//paused waiting for a receive from Messages().
+//
+//Messages with the same Time value will be "flood-released" from the same
+//separately spawned go-routine.
+//Additionally, Messages that are pushed with times before time.Now() will
+//immediately be released from the queue.
 package timequeue
 
 import (
@@ -6,11 +38,11 @@ import (
 )
 
 const (
-	//The default capacity used for Messages() channels.
+	//DefaultCapacity is the default capacity used for Messages() channels in New().
 	DefaultCapacity = 1
 )
 
-//Type TimeQueue is a queue of Messages that releases its Messages when their
+//TimeQueue is a queue of Messages that releases its Messages when their
 //Time fields pass.
 //
 //When Messages are pushed to a TimeQueue, the earliest Message is used to
@@ -30,7 +62,7 @@ const (
 //TimeQueue is not in a valid or working state.
 type TimeQueue struct {
 	//the goal is to have only one go-routine "inside" a TimeQueue at once.
-	//this is acheived by locking on lock in all exported methods and
+	//this is achieved by locking on lock in all exported methods and
 	//requiring the TimeQueue be locked in all unexported methods and
 	//before all use of unexported fields.
 
@@ -213,7 +245,7 @@ func (q *TimeQueue) Messages() <-chan *Message {
 //Therefore, there could still be Messages that q has reference to that are waiting
 //to be released or in the Messages() channel buffer.
 //
-//To obtain the number of total Messages that q still has refernce to add this value
+//To obtain the number of total Messages that q still has references to add this value
 //and the length of Messages():
 //	q.Size() + len(q.Messages())
 func (q *TimeQueue) Size() int {

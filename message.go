@@ -9,7 +9,7 @@ import (
 //sentinel value that says a Message is not in a messageHeap.
 const notInIndex = -1
 
-//Type Message is a simple holder struct for a time.Time (the time the Message
+//Message is a simple holder struct for a time.Time (the time the Message
 //will be released from the queue) and a Data payload of type interface{}.
 //
 //A Message is not safe for modification from multiple go-routines.
