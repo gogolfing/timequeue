@@ -12,6 +12,7 @@ notifications:
 
 env:
   global:
+    - GO111MODULE=on
     #COVERALLS_TOKEN
     - secure: "Sem13/2A1jUUMrhgC5w8oPaVVKU0iPs7LZ1QqlHjSpCX03WcEvhwUloXoFtKqMjoe1hHRplUE5rO/gquQa+t34i9PSVp00qiLO5eec4M0rJJ/Uz1PG8BEfAlEaiuSZTQ+JM4pNvldc2gbmYQ+dz7Ans5lA0Hv5j5L7A9///O+IJ/3Ob6yhG9YGXx/ohrF0US6PkHwl6+8Vu9iMOLBpnxeV1pRPny5yjVbtvTmAEnQc6ZMLMX0LgwcIuTJIvS8JTJgqyO6vygh0ZxEzmCB1gqf4h4ZkxTn7wxlY9UaH2P7F0agInZLP+Pt6Opg/YvIVreh9gOGy1u6utN8CGkUstkz9W8zuPpxV0PGdhhR7nyWoj1072qPYTk/m/ED5flKsmlW8tfq0HbgcpumWoZov/UoECgWltT9nQb8XVHXMQApaNnhh/EThlC0/noNfehtJsT/zNEK6fSZK+ZHOqyxalViZsEznTbo7RzpP1qD59+dBWx544PCAghSemLg+XYoEJALn0SocSVpYiW+F1cHhxL4c0imMhHGzzk/id5ZAJ3RLFzOzH8Ker1Ssp8TkCqlHoksv/IkkEW0IQ3O7vfrNPjBCcI2foAPfdv3EivfuI3L5JPgiteQ8LyZfzCO2xTGnCqUoBBcIiM6471aaQtADdnZMcwW3tAzdgrSgXrTWGcobI="
 
