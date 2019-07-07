@@ -20,14 +20,14 @@ func TestNewMessage(t *testing.T) {
 
 	m := NewMessage(now, p, data)
 
-	if !m.At.Equal(now) {
-		t.Fatal("At")
+	if !m.at.Equal(now) {
+		t.Fatal("at")
 	}
-	if m.Priority != p {
-		t.Fatal("Priority")
+	if m.priority != p {
+		t.Fatal("priority")
 	}
-	if !reflect.DeepEqual(m.Data, data) {
-		t.Fatal("Data")
+	if !reflect.DeepEqual(m.data, data) {
+		t.Fatal("data")
 	}
 
 	if m.messageHeap != nil {
@@ -47,43 +47,43 @@ func TestMessage_less(t *testing.T) {
 		result bool
 	}{
 		{
-			Message{At: now},
-			Message{At: now.Add(-1)},
+			Message{at: now},
+			Message{at: now.Add(-1)},
 			false,
 		},
 		{
-			Message{At: now.Add(-1)},
-			Message{At: now},
+			Message{at: now.Add(-1)},
+			Message{at: now},
 			true,
 		},
 		{
-			Message{At: now},
-			Message{At: now},
+			Message{at: now},
+			Message{at: now},
 			false,
 		},
 		{
-			Message{At: now, Priority: 1},
-			Message{At: now.Add(-1), Priority: 2},
+			Message{at: now, priority: 1},
+			Message{at: now.Add(-1), priority: 2},
 			false,
 		},
 		{
-			Message{At: now.Add(-1), Priority: 2},
-			Message{At: now, Priority: 1},
+			Message{at: now.Add(-1), priority: 2},
+			Message{at: now, priority: 1},
 			true,
 		},
 		{
-			Message{At: now, Priority: 1},
-			Message{At: now, Priority: 2},
+			Message{at: now, priority: 1},
+			Message{at: now, priority: 2},
 			true,
 		},
 		{
-			Message{At: now, Priority: 2},
-			Message{At: now, Priority: 2},
+			Message{at: now, priority: 2},
+			Message{at: now, priority: 2},
 			false,
 		},
 		{
-			Message{At: now, Priority: 3},
-			Message{At: now, Priority: 2},
+			Message{at: now, priority: 3},
+			Message{at: now, priority: 2},
 			false,
 		},
 	}
@@ -270,6 +270,8 @@ func TestMessageHeap_drain_ReturnsEqualLengthSliceOfMessagesNotInAHeapAndSetsLen
 }
 
 func assertDisassociated(t *testing.T, messages ...Message) {
+	t.Helper()
+
 	for _, m := range messages {
 		if m.messageHeap != nil || m.index >= 0 {
 			t.Error("Message is not disassociated", m)

@@ -1,7 +1,6 @@
 package timequeue
 
 import (
-	"log"
 	"sync"
 	"time"
 )
@@ -21,11 +20,11 @@ type TimeQueue struct {
 	pauseChan   chan chan struct{}
 }
 
-func New() *TimeQueue {
-	return NewCapacity(DefaultCapacity)
+func NewTimeQueue() *TimeQueue {
+	return NewTimeQueueCapacity(DefaultCapacity)
 }
 
-func NewCapacity(c int) *TimeQueue {
+func NewTimeQueueCapacity(c int) *TimeQueue {
 	tq := &TimeQueue{
 		timer:       newExpiredTimer(),
 		out:         make(chan Message, c),
@@ -69,34 +68,24 @@ func (tq *TimeQueue) start() bool {
 }
 
 func (tq *TimeQueue) run() {
-	//TODO need to test that the timer chan keeps values across stops and starts.
-	//
-
 	go func() {
 		for {
 			select {
 			case <-tq.timer.C:
-				log.Println("got timer")
 				tq.releaseNextMessage()
 
 			case resultChan := <-tq.pauseChan:
-				log.Println("got pause request")
 				resultChan <- struct{}{}
 				<-resultChan
-				log.Println("ended pause request")
 
 			case resultChan := <-tq.stopChan:
-				log.Println("got stop request")
 				resultChan <- struct{}{}
-				log.Println("ended stop request")
 				return
 			}
 
 			select {
 			case resultChan := <-tq.stopChan:
-				log.Println("got stop request")
 				resultChan <- struct{}{}
-				log.Println("ended stop request")
 				return
 
 			default:
@@ -181,9 +170,6 @@ func (tq *TimeQueue) remove(m *Message) bool {
 	unpause := tq.pause()
 	defer unpause()
 
-	//TODO something with checking timer if removed message is head.
-	//TODO make sure the calling code gets understands that m is removed.
-
 	isHead := m.isHead()
 	ok := tq.messageHeap.remove(m)
 
@@ -195,52 +181,36 @@ func (tq *TimeQueue) remove(m *Message) bool {
 	return ok
 }
 
-func (tq *TimeQueue) Push(at time.Time, p Priority, data interface{}) Message {
+func (tq *TimeQueue) Push(at time.Time, p Priority, data interface{}) *Message {
 	m := NewMessage(at, p, data)
 	tq.PushAll(m)
-	return *m
+	return m
 }
 
 func (tq *TimeQueue) PushAll(messages ...*Message) {
 	tq.lock.Lock()
 	defer tq.lock.Unlock()
 
-	log.Println("pushing messages", messages)
-
 	unpause := tq.pause()
 	defer unpause()
 
-	log.Println("paused and defered unpause")
-
-	var newHead *Message
+	hasNewHead := false
 
 	for _, m := range messages {
 		pushMessage(&tq.messageHeap, m)
 
-		log.Println("pushed message")
-
 		if m.isHead() {
-			log.Println("new message is head")
-			newHead = m
-		} else {
-			log.Println("new message is NOT head")
+			hasNewHead = true
 		}
 	}
 
-	if newHead != nil {
-		log.Println("doing something with timer because of new head")
-
-		if tq.messageHeap.Len() == 1 {
-			//We are the new head, but the only Message, so just set timer.
-			tq.resetTimerTo(newHead.At)
-		} else {
-			//We bumped out a prior head Message, so stop then reset.
+	if hasNewHead {
+		if len(messages) < tq.messageHeap.Len() {
+			//TODO displaced docs
 			tq.stopTimer()
-			tq.resetTimerTo(newHead.At)
 		}
+		tq.maybeResetTimerToHead()
 	}
-
-	log.Println("end of PushAll")
 }
 
 func (tq *TimeQueue) pause() func() {
@@ -266,7 +236,7 @@ func (tq *TimeQueue) maybeResetTimerToHead() {
 	peeked := tq.messageHeap.peek()
 
 	if peeked != nil {
-		tq.resetTimerTo(peeked.At)
+		tq.resetTimerTo(peeked.At())
 	}
 }
 
