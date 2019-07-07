@@ -1,6 +1,7 @@
 package timequeue
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -75,20 +76,27 @@ func (tq *TimeQueue) run() {
 		for {
 			select {
 			case <-tq.timer.C:
+				log.Println("got timer")
 				tq.releaseNextMessage()
 
 			case resultChan := <-tq.pauseChan:
+				log.Println("got pause request")
 				resultChan <- struct{}{}
 				<-resultChan
+				log.Println("ended pause request")
 
 			case resultChan := <-tq.stopChan:
+				log.Println("got stop request")
 				resultChan <- struct{}{}
+				log.Println("ended stop request")
 				return
 			}
 
 			select {
 			case resultChan := <-tq.stopChan:
+				log.Println("got stop request")
 				resultChan <- struct{}{}
+				log.Println("ended stop request")
 				return
 
 			default:
@@ -103,10 +111,7 @@ func (tq *TimeQueue) releaseNextMessage() {
 	m := popMessage(&tq.messageHeap)
 	tq.dispatch(m)
 
-	peeked := tq.messageHeap.peek()
-	if peeked != nil {
-		tq.resetTimerTo(peeked.At)
-	}
+	tq.maybeResetTimerToHead()
 }
 
 func (tq *TimeQueue) dispatch(m *Message) {
@@ -149,11 +154,11 @@ func (tq *TimeQueue) drain() []Message {
 		defer tq.stopTimer()
 	}
 
-	result := make([]Message, tq.messageHeap.Len())
-	for i, m := range tq.messageHeap {
-		result[i] = m.withoutHeap()
-	}
+	//We start with the drained Messages from our heap.
+	result := tq.messageHeap.drain()
 
+	//If there are Messages on our output channel, then drain the channel.
+	//Messages on this channel are already disassociated with a heap.
 	for len(tq.out) > 0 {
 		result = append(result, <-tq.out)
 	}
@@ -165,44 +170,66 @@ func (tq *TimeQueue) isStopped() bool {
 	return tq.stopChan == nil
 }
 
-func (tq *TimeQueue) Remove(m Message) bool {
+func (tq *TimeQueue) Remove(m *Message) bool {
 	tq.lock.Lock()
 	defer tq.lock.Unlock()
 
 	return tq.remove(m)
 }
 
-func (tq *TimeQueue) remove(m Message) bool {
+func (tq *TimeQueue) remove(m *Message) bool {
 	unpause := tq.pause()
 	defer unpause()
 
-	return tq.messageHeap.remove(&m)
+	//TODO something with checking timer if removed message is head.
+	//TODO make sure the calling code gets understands that m is removed.
+
+	isHead := m.isHead()
+	ok := tq.messageHeap.remove(m)
+
+	if ok && isHead {
+		tq.stopTimer()
+		tq.maybeResetTimerToHead()
+	}
+
+	return ok
 }
 
 func (tq *TimeQueue) Push(at time.Time, p Priority, data interface{}) Message {
 	m := NewMessage(at, p, data)
 	tq.PushAll(m)
-	return m
+	return *m
 }
 
-func (tq *TimeQueue) PushAll(messages ...Message) {
+func (tq *TimeQueue) PushAll(messages ...*Message) {
 	tq.lock.Lock()
 	defer tq.lock.Unlock()
+
+	log.Println("pushing messages", messages)
 
 	unpause := tq.pause()
 	defer unpause()
 
+	log.Println("paused and defered unpause")
+
 	var newHead *Message
 
 	for _, m := range messages {
-		pushMessage(&tq.messageHeap, &m)
+		pushMessage(&tq.messageHeap, m)
+
+		log.Println("pushed message")
 
 		if m.isHead() {
-			newHead = &m
+			log.Println("new message is head")
+			newHead = m
+		} else {
+			log.Println("new message is NOT head")
 		}
 	}
 
 	if newHead != nil {
+		log.Println("doing something with timer because of new head")
+
 		if tq.messageHeap.Len() == 1 {
 			//We are the new head, but the only Message, so just set timer.
 			tq.resetTimerTo(newHead.At)
@@ -212,13 +239,18 @@ func (tq *TimeQueue) PushAll(messages ...Message) {
 			tq.resetTimerTo(newHead.At)
 		}
 	}
+
+	log.Println("end of PushAll")
 }
 
 func (tq *TimeQueue) pause() func() {
+	if tq.isStopped() {
+		return func() {}
+	}
+
 	resultChan := make(chan struct{})
 	tq.pauseChan <- resultChan
-	<-tq.pauseChan
-
+	<-resultChan
 	return func() {
 		resultChan <- struct{}{}
 	}
@@ -227,6 +259,14 @@ func (tq *TimeQueue) pause() func() {
 func (tq *TimeQueue) stopTimer() {
 	if !tq.timer.Stop() {
 		<-tq.timer.C
+	}
+}
+
+func (tq *TimeQueue) maybeResetTimerToHead() {
+	peeked := tq.messageHeap.peek()
+
+	if peeked != nil {
+		tq.resetTimerTo(peeked.At)
 	}
 }
 

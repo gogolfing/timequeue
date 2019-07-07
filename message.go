@@ -46,8 +46,8 @@ type Message struct {
 //NewMessage returns a Message with at, p, and data set on their corresponding fields.
 //
 //You should use this function to create Messages instead of using a struct initializer.
-func NewMessage(at time.Time, p Priority, data interface{}) Message {
-	return Message{
+func NewMessage(at time.Time, p Priority, data interface{}) *Message {
+	return &Message{
 		At:          at,
 		Priority:    p,
 		Data:        data,
@@ -158,4 +158,17 @@ func (mh *messageHeap) remove(m *Message) bool {
 
 	heap.Remove(mh, m.index)
 	return true
+}
+
+func (mh *messageHeap) drain() []Message {
+	old := *mh
+
+	result := make([]Message, len(old))
+	for i, m := range old {
+		result[i] = m.withoutHeap()
+	}
+
+	*mh = old[0:0]
+
+	return result
 }

@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
-	"time"
 	"testing"
+	"time"
 )
 
 var (
@@ -41,9 +41,9 @@ func TestNewMessage(t *testing.T) {
 func TestMessage_less(t *testing.T) {
 	now := time.Now()
 
-	cases := []struct{
-		a Message
-		b Message
+	cases := []struct {
+		a      Message
+		b      Message
 		result bool
 	}{
 		{
@@ -108,7 +108,7 @@ func TestMessage_isHead_MessagesInLenOneHeapsAreHeads(t *testing.T) {
 	mh := messageHeap([]*Message{})
 	m := NewMessage(time.Now(), 0, nil)
 
-	pushMessage(&mh, &m)
+	pushMessage(&mh, m)
 
 	if !m.isHead() {
 		t.Fatal()
@@ -132,7 +132,7 @@ func TestMessageHeap_Less_DefersToTheMessageLessMethod(t *testing.T) {
 	m1 := NewMessage(now, 0, nil)
 	m2 := NewMessage(now, 1, nil)
 
-	mh := messageHeap([]*Message{&m1, &m2})
+	mh := messageHeap([]*Message{m1, m2})
 
 	if !mh.Less(0, 1) {
 		t.Fatal()
@@ -147,17 +147,17 @@ func TestMessageHeap_Swap_UpdatesReferencesAndIndices(t *testing.T) {
 	m1 := NewMessage(now, 0, nil)
 	m2 := NewMessage(now, 1, nil)
 
-	mh := messageHeap([]*Message{&m1, &m2})
+	mh := messageHeap([]*Message{m1, m2})
 
 	mh.Swap(0, 1)
 
 	//Messages weren't pushed, so there isn't information on them.
 	//We can check to make sure the index is updated.
 
-	if mh[0] != &m2 || m2.index != 0 {
+	if mh[0] != m2 || m2.index != 0 {
 		t.Fatal()
 	}
-	if mh[1] != &m1 || m1.index != 1 {
+	if mh[1] != m1 || m1.index != 1 {
 		t.Fatal()
 	}
 }
@@ -167,7 +167,7 @@ func TestMessageHeap_Push_SetsTheMessageHeapFieldOnMessage(t *testing.T) {
 
 	mh := messageHeap([]*Message{})
 
-	pushMessage(&mh, &m)
+	pushMessage(&mh, m)
 
 	if m.messageHeap != &mh {
 		t.Fatal()
@@ -182,9 +182,9 @@ func TestMessageHeap_PushAndPopResultInTheCorrectOrdering(t *testing.T) {
 	want := []*Message{}
 	for i := 0; i < 100; i++ {
 		m := NewMessage(now, Priority(rand.Int31()), nil)
-		want = append(want, &m)
+		want = append(want, m)
 
-		pushMessage(&mh, &m)
+		pushMessage(&mh, m)
 	}
 	sort.Sort(messageHeap(want))
 
@@ -214,7 +214,7 @@ func TestMessageHeap_peek_ReturnsMessageAtIndexZero(t *testing.T) {
 
 	mh := messageHeap([]*Message{})
 
-	pushMessage(&mh, &m)
+	pushMessage(&mh, m)
 
 	if peeked := mh.peek(); peeked != mh[0] {
 		t.Fatal()
@@ -226,7 +226,7 @@ func TestMessageHeap_remove_ReturnsFalseWithoutAssociation(t *testing.T) {
 
 	mh := messageHeap([]*Message{})
 
-	if ok := mh.remove(&m); ok {
+	if ok := mh.remove(m); ok {
 		t.Fatal()
 	}
 }
@@ -236,17 +236,43 @@ func TestMessageHeap_remove_ReturnsTrueAndModifiesMessage(t *testing.T) {
 
 	mh := messageHeap([]*Message{})
 
-	pushMessage(&mh, &m)
+	pushMessage(&mh, m)
 
-	if m.index < 0 {
+	if m.messageHeap == nil || m.index < 0 {
 		t.Fatal()
 	}
 
-	if ok := mh.remove(&m); !ok {
+	if ok := mh.remove(m); !ok {
 		t.Fatal()
 	}
 
-	if m.index >= 0 {
+	assertDisassociated(t, *m)
+}
+
+func TestMessageHeap_drain_ReturnsEqualLengthSliceOfMessagesNotInAHeapAndSetsLengthToZero(t *testing.T) {
+	mh := messageHeap([]*Message{})
+
+	for i := 0; i < 100; i++ {
+		m := NewMessage(time.Now(), 0, i)
+		pushMessage(&mh, m)
+	}
+
+	drained := mh.drain()
+
+	assertDisassociated(t, drained...)
+
+	if len(drained) != 100 {
 		t.Fatal()
+	}
+	if mh.Len() != 0 {
+		t.Fatal()
+	}
+}
+
+func assertDisassociated(t *testing.T, messages ...Message) {
+	for _, m := range messages {
+		if m.messageHeap != nil || m.index >= 0 {
+			t.Error("Message is not disassociated", m)
+		}
 	}
 }
