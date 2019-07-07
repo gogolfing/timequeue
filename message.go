@@ -11,11 +11,7 @@ const (
 	indexNotInHeap = -1
 )
 
-//Priority is the priority of a Message.
-//Smaller values indicate a higher priority, with 0 being the highest priority.
-type Priority uint32
-
-//Message is a container type that associates a Time and Priority with some
+//Message is a container type that associates a Time with some
 //arbitrary data.
 //A Message is "released" from a TimeQueue as close to Time At as possible.
 //
@@ -24,12 +20,6 @@ type Priority uint32
 type Message struct {
 	//at is the Time at which to release this Message.
 	at time.Time
-
-	//priority is the Priority of this Message.
-	//If a Message has an equal At value with another Message in the same TimeQueue,
-	//then priority is consulted to "order" the Messages to determine which should
-	//be "released" first.
-	priority Priority
 
 	//data is any arbitrary data that you can put in a Message and retrieve when
 	//the Message is released.
@@ -43,13 +33,12 @@ type Message struct {
 	index int
 }
 
-//NewMessage returns a Message with at, p, and data set on their corresponding fields.
+//NewMessage returns a Message with at and data set on their corresponding fields.
 //
 //You should use this function to create Messages instead of using a struct initializer.
-func NewMessage(at time.Time, p Priority, data interface{}) *Message {
+func NewMessage(at time.Time, data interface{}) *Message {
 	return &Message{
 		at:          at,
-		priority:    p,
 		data:        data,
 		messageHeap: nil,
 		index:       indexNotInHeap,
@@ -59,11 +48,6 @@ func NewMessage(at time.Time, p Priority, data interface{}) *Message {
 //At returns the Time at which m is scheduled to be released.
 func (m *Message) At() time.Time {
 	return m.at
-}
-
-//Priority returns m's Priority.
-func (m *Message) Priority() Priority {
-	return m.priority
 }
 
 //Data returns the data associated with m.
@@ -77,15 +61,9 @@ func (m *Message) Data() interface{} {
 //less returns whether or not m is "less than" other.
 //This is used to determined the order in which Messages are released from a TimeQueue.
 //
-//It returns true if m.at is before other.at, regardless of Priorities.
-//If m and other have an equal at field, then true is returned if m has a lower
-//priority than other.
+//It returns true if m.at is before other.at.
 func (m *Message) less(other *Message) bool {
-	diff := m.at.Sub(other.at)
-	if diff != 0 {
-		return diff < 0
-	}
-	return m.priority < other.priority
+	return m.at.Before(other.at)
 }
 
 //isHead returns whether or not m is at the head of a messageHeap, i.e. the next

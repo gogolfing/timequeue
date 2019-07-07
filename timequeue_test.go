@@ -65,7 +65,7 @@ func TestTimeQueue_ANewTimeQueueCanHoldCapacityWithoutBlocking_DrainCalledWhileR
 
 	now := time.Now()
 	for i := 0; i < 10; i++ {
-		tq.Push(now, 0, i)
+		tq.Push(now, i)
 	}
 
 	drained := tq.Drain()
@@ -80,7 +80,7 @@ func TestTimeQueue_ANewTimeQueueCanHoldCapacityWithoutBlocking_DrainCalledWhileS
 
 	now := time.Now()
 	for i := 0; i < 10; i++ {
-		tq.Push(now, 0, i)
+		tq.Push(now, i)
 	}
 
 	tq.Stop()
@@ -96,7 +96,7 @@ func TestTimeQueue_Remove_CanRemoveAMessageWhileRunningAndNothingGetsDrained(t *
 	tq := NewTimeQueue()
 	defer tq.Stop()
 
-	m := tq.Push(time.Now().Add(time.Hour), 0, nil)
+	m := tq.Push(time.Now().Add(time.Hour), nil)
 
 	if ok := tq.Remove(m); !ok {
 		t.Fatal(ok)
@@ -110,7 +110,7 @@ func TestTimeQueue_Remove_CanRemoveAMessageWhileRunningAndNothingGetsDrained(t *
 func TestTimeQueue_Remove_CanRemoveAMessageWhileStoppedAndNothingGetsDrained(t *testing.T) {
 	tq := NewTimeQueue()
 
-	m := tq.Push(time.Now().Add(time.Hour), 0, nil)
+	m := tq.Push(time.Now().Add(time.Hour), nil)
 
 	tq.Stop()
 
@@ -130,8 +130,8 @@ func TestTimeQueue_Remove_CallingRemoveWithAMessageFromAnotherQueueReturnsFalse(
 	tq2 := NewTimeQueueCapacity(1) //We need capacity so we don't block.
 	defer tq2.Stop()
 
-	tq1.Push(time.Now(), 0, nil)
-	m2 := tq2.Push(time.Now(), 0, nil)
+	tq1.Push(time.Now(), nil)
+	m2 := tq2.Push(time.Now(), nil)
 
 	if tq1.Remove(m2) {
 		t.Fatal()
@@ -151,7 +151,7 @@ func TestTimeQueue_Push_WeCanPushAsManyMessagesAsWeWantAtNowWhileStoppedWithoutC
 
 	now := time.Now()
 	for i := 0; i < 100; i++ {
-		tq.Push(now, 0, i)
+		tq.Push(now, i)
 	}
 }
 
@@ -165,7 +165,7 @@ func TestTimeQueue_PushAll_WeCanPushAllWithAsManyMessagesAsWeWantAtNowWhileRunni
 	now := time.Now()
 	messages := []*Message{}
 	for i := 0; i < 100; i++ {
-		messages = append(messages, NewMessage(now, 0, i))
+		messages = append(messages, NewMessage(now, i))
 	}
 
 	tq.PushAll(messages...)
@@ -189,11 +189,11 @@ func TestTimeQueue_PushAll_CorrectlyStopsThenResetsTheTimerWhenWeAddANewHeadWith
 
 	now := time.Now()
 	tq.PushAll(
-		NewMessage(now.Add(time.Hour), 0, nil),
+		NewMessage(now.Add(time.Hour), nil),
 	)
 
 	tq.PushAll(
-		NewMessage(now, 0, nil),
+		NewMessage(now, nil),
 	)
 }
 
@@ -202,7 +202,7 @@ func TestTimeQueue_CanSuccessfullyReceiveMessageFromTimerAfterResumingFromStoppe
 
 	tq.Stop()
 
-	tq.Push(time.Now().Add(time.Second/2), 0, "my message")
+	tq.Push(time.Now().Add(time.Second/2), "my message")
 
 	tq.Start()
 

@@ -33,7 +33,7 @@ func TestTimeQueue_SinglePublisherAndConsumerRetrievesMessagesInOrder(t *testing
 
 		toPush := make([]*timequeue.Message, count)
 		for i := 0; i < count; i++ {
-			toPush[i] = timequeue.NewMessage(atFunc(), 0, i)
+			toPush[i] = timequeue.NewMessage(atFunc(), i)
 		}
 
 		tq.PushAll(toPush...)
@@ -171,7 +171,7 @@ func produceMessages(ctx context.Context, tq *timequeue.TimeQueue, grc, mpg int,
 					break loop
 
 				default:
-					m := tq.Push(atFunc(), 0, i)
+					m := tq.Push(atFunc(), i)
 					count++
 
 					if rand.Float64() < removeRate {

@@ -32,7 +32,7 @@ func ExampleTimeQueue() {
 
 		toPush := make([]*timequeue.Message, count)
 		for i := 0; i < count; i++ {
-			m := timequeue.NewMessage(now.Add(time.Duration(i)), 0, i+1)
+			m := timequeue.NewMessage(now.Add(time.Duration(i)), i+1)
 			toPush[i] = m
 		}
 

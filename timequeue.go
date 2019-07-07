@@ -181,8 +181,8 @@ func (tq *TimeQueue) remove(m *Message) bool {
 	return ok
 }
 
-func (tq *TimeQueue) Push(at time.Time, p Priority, data interface{}) *Message {
-	m := NewMessage(at, p, data)
+func (tq *TimeQueue) Push(at time.Time, data interface{}) *Message {
+	m := NewMessage(at, data)
 	tq.PushAll(m)
 	return m
 }

@@ -2,7 +2,6 @@ package timequeue
 
 import (
 	"container/heap"
-	"math/rand"
 	"reflect"
 	"sort"
 	"testing"
@@ -15,16 +14,12 @@ var (
 
 func TestNewMessage(t *testing.T) {
 	now := time.Now()
-	p := Priority(1234)
 	var data interface{} = t.Name()
 
-	m := NewMessage(now, p, data)
+	m := NewMessage(now, data)
 
 	if !m.at.Equal(now) {
 		t.Fatal("at")
-	}
-	if m.priority != p {
-		t.Fatal("priority")
 	}
 	if !reflect.DeepEqual(m.data, data) {
 		t.Fatal("data")
@@ -61,31 +56,6 @@ func TestMessage_less(t *testing.T) {
 			Message{at: now},
 			false,
 		},
-		{
-			Message{at: now, priority: 1},
-			Message{at: now.Add(-1), priority: 2},
-			false,
-		},
-		{
-			Message{at: now.Add(-1), priority: 2},
-			Message{at: now, priority: 1},
-			true,
-		},
-		{
-			Message{at: now, priority: 1},
-			Message{at: now, priority: 2},
-			true,
-		},
-		{
-			Message{at: now, priority: 2},
-			Message{at: now, priority: 2},
-			false,
-		},
-		{
-			Message{at: now, priority: 3},
-			Message{at: now, priority: 2},
-			false,
-		},
 	}
 
 	for i, tc := range cases {
@@ -98,7 +68,7 @@ func TestMessage_less(t *testing.T) {
 }
 
 func TestMessage_isHead_NewMessagesShouldNotBeHeads(t *testing.T) {
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 	if m.isHead() {
 		t.Fatal()
 	}
@@ -106,7 +76,7 @@ func TestMessage_isHead_NewMessagesShouldNotBeHeads(t *testing.T) {
 
 func TestMessage_isHead_MessagesInLenOneHeapsAreHeads(t *testing.T) {
 	mh := messageHeap([]*Message{})
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 
 	pushMessage(&mh, m)
 
@@ -129,8 +99,8 @@ func TestMessageHeap_Len(t *testing.T) {
 
 func TestMessageHeap_Less_DefersToTheMessageLessMethod(t *testing.T) {
 	now := time.Now()
-	m1 := NewMessage(now, 0, nil)
-	m2 := NewMessage(now, 1, nil)
+	m1 := NewMessage(now, nil)
+	m2 := NewMessage(now.Add(1), nil)
 
 	mh := messageHeap([]*Message{m1, m2})
 
@@ -144,8 +114,8 @@ func TestMessageHeap_Less_DefersToTheMessageLessMethod(t *testing.T) {
 
 func TestMessageHeap_Swap_UpdatesReferencesAndIndices(t *testing.T) {
 	now := time.Now()
-	m1 := NewMessage(now, 0, nil)
-	m2 := NewMessage(now, 1, nil)
+	m1 := NewMessage(now, nil)
+	m2 := NewMessage(now, nil)
 
 	mh := messageHeap([]*Message{m1, m2})
 
@@ -163,7 +133,7 @@ func TestMessageHeap_Swap_UpdatesReferencesAndIndices(t *testing.T) {
 }
 
 func TestMessageHeap_Push_SetsTheMessageHeapFieldOnMessage(t *testing.T) {
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 
 	mh := messageHeap([]*Message{})
 
@@ -181,7 +151,7 @@ func TestMessageHeap_PushAndPopResultInTheCorrectOrdering(t *testing.T) {
 
 	want := []*Message{}
 	for i := 0; i < 100; i++ {
-		m := NewMessage(now, Priority(rand.Int31()), nil)
+		m := NewMessage(now.Add(time.Duration(i)), nil)
 		want = append(want, m)
 
 		pushMessage(&mh, m)
@@ -210,7 +180,7 @@ func TestMessageHeap_peek_EmptyReturnsNil(t *testing.T) {
 }
 
 func TestMessageHeap_peek_ReturnsMessageAtIndexZero(t *testing.T) {
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 
 	mh := messageHeap([]*Message{})
 
@@ -222,7 +192,7 @@ func TestMessageHeap_peek_ReturnsMessageAtIndexZero(t *testing.T) {
 }
 
 func TestMessageHeap_remove_ReturnsFalseWithoutAssociation(t *testing.T) {
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 
 	mh := messageHeap([]*Message{})
 
@@ -232,7 +202,7 @@ func TestMessageHeap_remove_ReturnsFalseWithoutAssociation(t *testing.T) {
 }
 
 func TestMessageHeap_remove_ReturnsTrueAndModifiesMessage(t *testing.T) {
-	m := NewMessage(time.Now(), 0, nil)
+	m := NewMessage(time.Now(), nil)
 
 	mh := messageHeap([]*Message{})
 
@@ -253,7 +223,7 @@ func TestMessageHeap_drain_ReturnsEqualLengthSliceOfMessagesNotInAHeapAndSetsLen
 	mh := messageHeap([]*Message{})
 
 	for i := 0; i < 100; i++ {
-		m := NewMessage(time.Now(), 0, i)
+		m := NewMessage(time.Now(), i)
 		pushMessage(&mh, m)
 	}
 
