@@ -1,82 +1,72 @@
 package timequeue_test
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/gogolfing/timequeue"
 )
 
-func Example() {
-	tq := timequeue.New()
-	tq.Start()
-	//this would normally be a long-running process,
-	//and not stop at the return of a function call.
-	defer tq.Stop()
-
-	startTime := time.Now()
-
-	tq.Push(startTime, "this will be released immediately")
-
-	//adding Messages in chronological order.
-	for i := 1; i <= 4; i++ {
-		tq.Push(
-			startTime.Add(time.Duration(i)*time.Second),
-			fmt.Sprintf("message at second %v", i),
-		)
-	}
-	//adding Messages in reverse chronological order.
-	for i := 8; i >= 5; i-- {
-		tq.Push(
-			startTime.Add(time.Duration(i)*time.Second),
-			fmt.Sprintf("message at second %v", i),
-		)
-	}
-
-	//receive all 9 Messages that were pushed.
-	for i := 0; i < 9; i++ {
-		message := <-tq.Messages()
-		fmt.Println(message.Data)
-	}
-
-	fmt.Printf("there are %v messages left in the queue\n", tq.Size())
-
-	endTime := time.Now()
-	if endTime.Sub(startTime) > time.Duration(8)*time.Second {
-		fmt.Println("releasing all messages took more than 8 seconds")
-	} else {
-		fmt.Println("releasing all messages took less than 8 seconds")
-	}
-
-	//Output:
-	//this will be released immediately
-	//message at second 1
-	//message at second 2
-	//message at second 3
-	//message at second 4
-	//message at second 5
-	//message at second 6
-	//message at second 7
-	//message at second 8
-	//there are 0 messages left in the queue
-	//releasing all messages took more than 8 seconds
-}
-
-func ExampleTimeQueue_PopAllUntil() {
-	tq := timequeue.New()
+func ExampleTimeQueue() {
 	now := time.Now()
-	for i := 0; i < 4; i++ {
-		tq.Push(now.Add(time.Duration(i)*time.Second), i)
-	}
-	tq.PopAllUntil(now.Add(time.Duration(2)*time.Second), true)
-	for i := 0; i < 2; i++ {
-		message := <-tq.Messages()
-		fmt.Println(message.Data)
-	}
-	fmt.Println("messages left:", tq.Size())
+	tq := timequeue.NewTimeQueue()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+
+		<-ctx.Done()
+
+		tq.Stop()
+	}()
+
+	doneProducing := make(chan struct{})
+	go func() {
+		defer close(doneProducing)
+
+		const count = 10
+
+		toPush := make([]*timequeue.Message, count)
+		for i := 0; i < count; i++ {
+			m := timequeue.NewMessage(now.Add(time.Duration(i)), i+1)
+			toPush[i] = m
+		}
+
+		tq.PushAll(toPush...)
+	}()
+
+	doneConsuming := make(chan struct{})
+	go func() {
+		defer close(doneConsuming)
+
+		for {
+			select {
+			case <-stopped:
+				return
+
+			case m := <-tq.Messages():
+				fmt.Println(m.Data().(int))
+			}
+		}
+	}()
+
+	<-doneProducing
+	<-stopped
+	<-doneConsuming
 
 	//Output:
-	//0
 	//1
-	//messages left: 2
+	//2
+	//3
+	//4
+	//5
+	//6
+	//7
+	//8
+	//9
+	//10
 }
